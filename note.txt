@@ -1,0 +1,4 @@
+testing on local end
+- forget .so, it's for ref & only works on x86
+- create an env 'cs149gpt_cpp' to write cpp extension (done)
+

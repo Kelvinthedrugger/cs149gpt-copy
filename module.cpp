@@ -4,7 +4,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <vector>
-#include <immintrin.h>
+//#include <immintrin.h>
 
 // Uncomment for ISPC
 //#include "module_ispc.h"
@@ -146,6 +146,9 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
             }
             // write Q dot K_t to O
             twoDimWrite(QK_t, row, col, N, qk_t);
+            //printf("%d, %d, %.9f\n", row, col, qk_t);
+            //if (col < d)
+            //  fourDimWrite(O, b, h, row, col, N, d, H, qk_t);
           }
         }
         // softmax()
@@ -153,12 +156,16 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
           float rowsum = 0.0f;
           for (int col = 0; col < N; col++) {
             float ele = twoDimRead(QK_t, row, col, N);
-            rowsum += exp(ele); // cpp intrinsic exp()?
+            ele = exp(ele); // cpp intrinsic exp()?
+            rowsum += ele;
+            twoDimWrite(QK_t, row, col, N, ele); // write back so that it's exponential'ed
+            //printf("%d, %d, %.9f, %.9f\n", row, col, ele, rowsum);
           }
           // writeback the normalized elements to QK_t
           for (int col = 0; col < N; col++) {
             float ele = twoDimRead(QK_t, row, col, N) / rowsum;
             twoDimWrite(QK_t, row, col, N, ele);
+            //printf("%d, %d, %.9f\n", row, col, ele);
           }
         }
         // dot V
@@ -172,7 +179,8 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               float v = fourDimRead(V, b, h, mid, col, H, N, d);
               val += ele * v;
             }
-            fourDimWrite(O, b, h, row, col, N, d, H, val);
+            //printf("%d, %d, %.9f\n", row, col, val);
+            fourDimWrite(O, b, h, row, col, H, N, d, val);
           }
         }
       }
@@ -249,8 +257,8 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
             for (int i = 0; i < N ; i++){
 
 		// YRow is moved inside so each OpenMP thread gets a local copy.
-                at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(), torch::indexing::None)});
-                std::vector<float> ORow = formatTensor(ORowTensor);
+                //at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(), torch::indexing::None)});
+                //std::vector<float> ORow = formatTensor(ORowTensor);
 		//YOUR CODE HERE
             }
 	}

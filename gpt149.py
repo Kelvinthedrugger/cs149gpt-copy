@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 from torch.profiler import profile, record_function, ProfilerActivity
-import module_ref as ms
+#import module_ref as ms
 
 NUM_THREADS=8
 torch.set_num_threads(NUM_THREADS)
@@ -20,7 +20,8 @@ ispc_path = getcwd() + "/module_ispc.o"
 if not path.exists(ispc_path): ispc_path = ""
 
 print("\nCompiling code into a PyTorch module...\n\n")
-mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
+#mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
+mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 
 class CustomAttention(nn.Module):
@@ -55,7 +56,7 @@ class CustomAttention(nn.Module):
             with record_function("STUDENT - BLOCKED MATMUL + UNFUSED SOFTMAX"):
                 temp = torch.zeros((self.N, self.N))
                 out = mr.myUnfusedAttentionBlocked(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-            return out 
+            return out
         with record_function("REFERENCE - BLOCKED MATMUL + UNFUSED SOFTMAX"):
             temp = torch.zeros((self.N, self.N))
             out = ms.myUnfusedAttentionBlocked(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
@@ -97,7 +98,7 @@ class CustomAttention(nn.Module):
             out = ms.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
         return out
 
-# generates dummy matrices for use in part0 
+# generates dummy matrices for use in part0
 def createQKVSimple(N,d,B,H):
     Q = torch.empty(B,H,N,d)
     K = torch.empty(B,H,d,N)
@@ -146,7 +147,7 @@ def badSoftmax(Q, K, V):
     QK = Q @ K.transpose(-2,-1)
     #compute softmax of QK^T
     QKSoftmax = F.softmax(QK, dim=3)
-    QKV = QKSoftmax @ V   
+    QKV = QKSoftmax @ V
     return QKV
 
 def testTemplate(customFunc, params, test_key):
@@ -161,17 +162,17 @@ def testTemplate(customFunc, params, test_key):
     with profile(activities=[ProfilerActivity.CPU],
             profile_memory=True, record_shapes=True) as prof:
         with record_function("model_inference"):
-            #compute with Naive Unfused 
+            #compute with Naive Unfused
             start = time.time()
             QKS1 = customFunc()
             end = time.time()
             manual_time = end - start
-    
+    torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
     assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
-    print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4)) 
+    print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4))
     #print("Pytorch Execution Time:", pytorch_time, "\n")
     print("Manual Execution Time: ", manual_time, "\n")
-    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))    
+    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
     r = prof.key_averages()
     for rr in r:
         if rr.key == test_key:
@@ -202,9 +203,9 @@ def part1Test(N, d, B, H):
     attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myUnfusedAttention, params, "REFERENCE - NAIVE ATTENTION")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myUnfusedAttention, params, "REFERENCE - NAIVE ATTENTION")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myUnfusedAttention, params, "STUDENT - NAIVE ATTENTION")
 
@@ -258,13 +259,13 @@ def accessTest(B, H, N, d):
     print("Expected:", expected)
     print("Result:", result)
     assert abs(expected - result) < 1e-5
-    
+
 def main():
 
     d=32
     B=1
     H=4
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("testname", default="part0", help="name of test to run: part0, part1, part2, part3, part4, 4Daccess")
     parser.add_argument("-m", "--model", default="shakes128", help="name of model to use: shakes128, shakes1024, shakes2048, kayvon")
@@ -290,13 +291,13 @@ def main():
     else:
         print("Unknown model name: %s" % args.model)
         return
-    
+
     if args.inference == False:
         N = int(args.N)
         if args.testname == "part0":
             part0Test(N, d, B, H)
         elif args.testname == "part1":
-            part1Test(N, d, B, H)
+            part1Test(3, 2, 1, 1)
         elif args.testname == "part2":
             part2Test(N, d, B, H)
         elif args.testname == "part3":
@@ -312,6 +313,6 @@ def main():
         from sample import run_sample
         run_sample(N, model_filename, args.testname)
 
-        
+
 if __name__ == "__main__":
     main()
