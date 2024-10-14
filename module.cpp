@@ -45,26 +45,30 @@ std::vector<float> formatTensor(torch::Tensor tensor) {
 
 /* Programming Your Attention Modules.
  *
- * You are given Q, K, and V Tensors as inputs that are formatted as vectors. We have also created O and QK^t Tensors
- * that are formatted as vectors. After you have implemented your accessors in the Warm-Up you should be able to
+ * You are given Q, K, and V Tensors as inputs that are formatted as vectors. We
+ * have also created O and QK^t Tensors that are formatted as vectors. After you
+ * have implemented your accessors in the Warm-Up you should be able to
  * read/write to these tensors via the read/write functions above.
  *
  * You are also given 4 integers as parameters: B, H, N, d:
  *
- * B (Batch Size) - The number of samples for your attention layer. Think of it this way - if I asked my dnn
- * a question and it output 5 different answers it had a batch size of 5. These samples are independent of each
- * other and thus can be parallelized.
+ * B (Batch Size) - The number of samples for your attention layer. Think of it
+ * this way - if I asked my dnn a question and it output 5 different answers it
+ * had a batch size of 5. These samples are independent of each other and thus
+ * can be parallelized.
  *
- * H (Number of Heads) - Each head runs on its own set of Q, K, V matrices. This effectively allows each head
- * to operate the same attention algorithm, but each with each head using different hyperparameters. These
- * allow each head to have their own definition of what relevance is when looking at a token. These heads
- * can operate independently of one another and thus can be parallized.
+ * H (Number of Heads) - Each head runs on its own set of Q, K, V matrices. This
+ * effectively allows each head to operate the same attention algorithm, but
+ * each with each head using different hyperparameters. These allow each head to
+ * have their own definition of what relevance is when looking at a token. These
+ * heads can operate independently of one another and thus can be parallelized.
  *
- * N (Sequence Length) - The number of tokens. You may think of this as the number of words in a sample.
+ * N (Sequence Length) - The number of tokens. You may think of this as the
+ * number of words in a sample.
  *
- * d (Embedding Dimensionality) - The number of features each token encodes per attention head. Let's
- * say I encoded a word using the follow (length, number of vowels, has a capital letters). The
- * emvedded dimensionaliy would be 3.
+ * d (Embedding Dimensionality) - The number of features each token encodes per
+ * attention head. Let's say I encoded a word using the follow (length, number
+ * of vowels, has a capital letters). The embedded dimensionaliy would be 3.
  * */
 
 // ---------------------------------------------------------- //
@@ -88,7 +92,6 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
     //Format QK_t Tensor into a 2D vector.
     std::vector<float> QK_t = formatTensor(QK_tTensor);
-
     /* Here is an example of how to read/write 0's to  Q (B, H, N, d) using the 4D accessors
 
         //loop over Batch Size
@@ -111,18 +114,69 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
          }
     */
 
-    /* Here is an example of how to read/write 0's to  QK_t (N, N) using the 2D accessors
+    /* Here is an example of how to read/write 0's to  QK_t (N, N) using the 2D
+       accessors
 
-           for (int i = 0; i < N; i++) {
-	       for (int j = 0; j < N; j++) {
-	           float val = twoDimRead(QK_t, i, j, N);
+         for (int i = 0; i < N; i++) {
+             for (int j = 0; j < N; j++) {
+               float val = twoDimRead(QK_t, i, j, N);
                val = 0.0;
-	           twoDimWrite(QK_t, i, j, N, val);
+               twoDimWrite(QK_t, i, j, N, val);
              }
          }
     */
 
     // -------- YOUR CODE HERE  -------- //
+    // loop over Batch Size
+    for (int b = 0; b < B; b++) {
+      // loop over Heads
+      for (int h = 0; h < H; h++) {
+        // loop over Sequence Length
+        // Q * K_t
+        // row
+        for (int row = 0; row < N; row++) {
+          for (int col = 0; col < N; col++) {
+            float qk_t = 0.0f;
+            // loop over Embedding Dimensionality
+            for (int mid = 0; mid < d; mid++) {
+              float q = fourDimRead(Q, b, h, row, mid, H, N, d);
+              float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
+              // accumulate Q dot K_t for each 1 iteration
+              qk_t += q * k_t;
+            }
+            // write Q dot K_t to O
+            twoDimWrite(QK_t, row, col, N, qk_t);
+          }
+        }
+        // softmax()
+        for (int row = 0; row < N; row++) {
+          float rowsum = 0.0f;
+          for (int col = 0; col < N; col++) {
+            float ele = twoDimRead(QK_t, row, col, N);
+            rowsum += exp(ele); // cpp intrinsic exp()?
+          }
+          // writeback the normalized elements to QK_t
+          for (int col = 0; col < N; col++) {
+            float ele = twoDimRead(QK_t, row, col, N) / rowsum;
+            twoDimWrite(QK_t, row, col, N, ele);
+          }
+        }
+        // dot V
+        // row
+        for (int row = 0; row < N; row++) {
+          // loop over Embedding Dimensionality
+          for (int col = 0; col < d; col++) {
+            float val = 0.0f;
+            for (int mid = 0; mid < N; mid++) {
+              float ele = twoDimRead(QK_t, row, mid, N);
+              float v = fourDimRead(V, b, h, mid, col, H, N, d);
+              val += ele * v;
+            }
+            fourDimWrite(O, b, h, row, col, N, d, H, val);
+          }
+        }
+      }
+    }
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
