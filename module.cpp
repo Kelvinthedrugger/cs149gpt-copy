@@ -25,14 +25,14 @@ inline void twoDimWrite(std::vector<float> &tensor, int &x, int &y, const int &s
 }
 
 // Step #2: Implement Read/Write Accessors for a 4D Tensor
-inline float fourDimRead(std::vector<float> &tensor, int &x, int &y, int &z, int &b, 
+inline float fourDimRead(std::vector<float> &tensor, int &x, int &y, int &z, int &b,
         const int &sizeX, const int &sizeY, const int &sizeZ) {
-    return 0.0;
+  return tensor[((x * sizeX + y) * sizeY + z) * sizeZ + b];
 }
 
-inline void fourDimWrite(std::vector<float> &tensor, int &x, int &y, int &z, int &b, 
+inline void fourDimWrite(std::vector<float> &tensor, int &x, int &y, int &z, int &b,
         const int &sizeX, const int &sizeY, const int &sizeZ, float &val) {
-    return; 
+  tensor[((x * sizeX + y) * sizeY + z) * sizeZ + b] = val;
 }
 
 // DO NOT EDIT THIS FUNCTION //
@@ -44,8 +44,8 @@ std::vector<float> formatTensor(torch::Tensor tensor) {
 }
 
 /* Programming Your Attention Modules.
- * 
- * You are given Q, K, and V Tensors as inputs that are formatted as vectors. We have also created O and QK^t Tensors 
+ *
+ * You are given Q, K, and V Tensors as inputs that are formatted as vectors. We have also created O and QK^t Tensors
  * that are formatted as vectors. After you have implemented your accessors in the Warm-Up you should be able to
  * read/write to these tensors via the read/write functions above.
  *
@@ -76,8 +76,8 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
     // Q, K, V are passed in with Shape: (B, H, N, d)
     //QK^t Intermediate Tensor has Shape (N, N)
-    
-    //Make O Tensor with Shape (B, H, N, d) 
+
+    //Make O Tensor with Shape (B, H, N, d)
     at::Tensor OTensor = at::zeros({B, H, N, d}, at::kFloat);
 
     //Format O, Q, K, and V tensors into 4D vectors
@@ -88,7 +88,7 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
     //Format QK_t Tensor into a 2D vector.
     std::vector<float> QK_t = formatTensor(QK_tTensor);
-    
+
     /* Here is an example of how to read/write 0's to  Q (B, H, N, d) using the 4D accessors
 
         //loop over Batch Size
@@ -121,9 +121,9 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
              }
          }
     */
-    
+
     // -------- YOUR CODE HERE  -------- //
-    
+
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
     return torch::from_blob(O.data(), {B, H, N, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
@@ -136,11 +136,11 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
 torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTensor, torch::Tensor VTensor, torch::Tensor QK_tTensor,
                 int B, int H, int N, int d){
-    
+
     // Q, K, V are passed in with Shape: (B, H, N, d)
     //QK^t Intermediate Tensor has Shape (N, N)
 
-    //Make O Tensor with Shape (B, H, N, d) 
+    //Make O Tensor with Shape (B, H, N, d)
     at::Tensor OTensor = at::zeros({B, H, N, d}, at::kFloat);
 
     //Format O, Q, K, and V tensors into 4D vectors
@@ -179,7 +179,7 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     std::vector<float> Q = formatTensor(QTensor);
     std::vector<float> K = formatTensor(KTensor);
     std::vector<float> V = formatTensor(VTensor);
-    
+
     //Format ORow Tensor into a 1D vector
     // You can simply access this as ORow[i]
     std::vector<float> ORow = formatTensor(ORowTensor);
@@ -195,14 +195,14 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
             for (int i = 0; i < N ; i++){
 
 		// YRow is moved inside so each OpenMP thread gets a local copy.
-                at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(), torch::indexing::None)});      
+                at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(), torch::indexing::None)});
                 std::vector<float> ORow = formatTensor(ORowTensor);
 		//YOUR CODE HERE
             }
 	}
     }
-	    
-	
+
+
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
     return torch::from_blob(O.data(), {B, H, N, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
@@ -216,10 +216,10 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, torch::Tensor VTensor,
                torch::Tensor QiTensor, torch::Tensor KjTensor, torch::Tensor VjTensor,
                torch::Tensor SijTensor, torch::Tensor PijTensor, torch::Tensor PVTensor,
-               torch::Tensor OiTensor, torch::Tensor LTensor,  torch::Tensor LiTensor, 
+               torch::Tensor OiTensor, torch::Tensor LTensor,  torch::Tensor LiTensor,
 	       torch::Tensor LijTensor, torch::Tensor LnewTensor, int Bc, int Br,
                 int B, int H, int N, int d) {
-        
+
     // Q, K, V are passed in with Shape: (B, H, N, d)
     // Sij, Pij are passed in with Shape: (Br, Bc)
     // Kj, Vj are passed in with Shape: (Bc, d)
@@ -229,7 +229,7 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
     //Make O Tensor with Shape (B, H, N, d)
     at::Tensor OTensor = at::zeros({B, H, N, d}, at::kFloat);
-   
+
     //Format All Tensors into Vectors
     std::vector<float> O = formatTensor(OTensor);
     std::vector<float> Q = formatTensor(QTensor);
