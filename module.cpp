@@ -382,17 +382,45 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     // We give you a template of the first three loops for your convenience
     //loop over batch
     for (int b = 0; b < B; b++){
-
         //loop over heads
         for (int h = 0; h < H; h++){
-            for (int i = 0; i < N ; i++){
-
-		// YRow is moved inside so each OpenMP thread gets a local copy.
-                //at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(), torch::indexing::None)});
-                //std::vector<float> ORow = formatTensor(ORowTensor);
-		//YOUR CODE HERE
+          // compute Q dot K_t & exp'ed it & accumulate rowsum
+          for (int row = 0; row < N; row++) {
+            // YRow is moved inside so each OpenMP thread gets a local copy.
+            // at::Tensor ORowTensor =
+            // temp.index({torch::indexing::Slice(omp_get_thread_num(),
+            // torch::indexing::None)}); std::vector<float> ORow =
+            // formatTensor(ORowTensor); YOUR CODE HERE
+            // Q dot K_t
+            float rowsum = 0.0f; // for softmax
+            for (int col = 0; col < N; col++) {
+              float qk_t = 0.0f;
+              for (int mid = 0; mid < d; mid++) {
+                float q = fourDimRead(Q, b, h, row, mid, H, N, d);
+                float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
+                qk_t += q * k_t;
+              }
+              float exp_qkt = exp(qk_t);
+              rowsum += exp_qkt;
+              ORow[col] = exp_qkt;
             }
-	}
+            // compute softmax
+            for (int col = 0; col < N; col++) {
+              ORow[col] /= rowsum;
+            }
+            // dot V
+            for (int col = 0; col < d; col++) {
+              float val = 0.0f;
+              for (int mid = 0; mid < N; mid++) {
+                // load p,v -> dot -> write back
+                float p = ORow[mid];
+                float v = fourDimRead(V, b, h, mid, col, H, N, d);
+                val += p * v;
+              }
+              fourDimWrite(O, b, h, row, col, H, N, d, val);
+            }
+          }
+        }
     }
 
 
