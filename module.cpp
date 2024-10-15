@@ -191,6 +191,7 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     return torch::from_blob(O.data(), {B, H, N, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
 }
 
+int min(int a, int b) { return std::min(a, b); }
 
 // ---------------------------------------------------------- //
 //     PART 2: BLOCKED MATRIX MULTIPLY AND UNFUSED SOFTMAX    //
@@ -215,6 +216,106 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
     std::vector<float> QK_t = formatTensor(QK_tTensor);
 
     // -------- YOUR CODE HERE  -------- //
+    // copied from part1: edit only a part of it
+    //  , so that we'll know if things goes off
+    // loop over Batch Size
+    for (int b = 0; b < B; b++) {
+      // loop over Heads
+      for (int h = 0; h < H; h++) {
+        // loop over Sequence Length
+        // Q * K_t
+        // row
+        // done, but it's slower than QK from part 1
+        //  i'm guessing it's because Q & K are accessed
+        //  in row major originally, so this blocked version
+        //  doesn't help a lot. consider to adjust the direction of access
+        int tileSize = 4;
+        for (int row = 0; row < N; row++) {
+          for (int col = 0; col < N; col++) {
+            float qk_t = 0.0f;
+            // loop over Embedding Dimensionality
+            for (int mid = 0; mid < d; mid++) {
+              // float q = fourDimRead(Q, b, h, row, mid, H, N, d);
+              // float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
+              //  accumulate Q dot K_t for each 1 iteration
+              // qk_t += q * k_t;
+              //  iterate inside the tile
+              for (int rowidx = row; rowidx < min(N, row + tileSize);
+                   rowidx++) {
+                for (int colidx = col; colidx < min(N, col + tileSize);
+                     colidx++) {
+                  // read value from (possibly written previously) tile
+                  qk_t = twoDimRead(QK_t, rowidx, colidx, N);
+                  for (int mididx = mid; mididx < min(d, mid + tileSize);
+                       mididx++) {
+                    float q = fourDimRead(Q, b, h, rowidx, mididx, H, N, d);
+                    float k_t = fourDimRead(K, b, h, colidx, mididx, H, N, d);
+                    qk_t += q * k_t;
+                  }
+                  // write to corresponding tile
+                  twoDimWrite(QK_t, rowidx, colidx, N, qk_t);
+                }
+              }
+            }
+            // write Q dot K_t to O
+            //printf("%d, %d, %.9f\n", row, col, qk_t);
+          }
+        }
+        // softmax()
+        for (int row = 0; row < N; row++) {
+          float rowsum = 0.0f;
+          for (int col = 0; col < N; col++) {
+            float ele = twoDimRead(QK_t, row, col, N);
+            ele = exp(ele); // cpp intrinsic exp()?
+            rowsum += ele;
+            twoDimWrite(QK_t, row, col, N, ele); // write back so that it's exponential'ed
+            //printf("%d, %d, %.9f, %.9f\n", row, col, ele, rowsum);
+          }
+          // writeback the normalized elements to QK_t
+          for (int col = 0; col < N; col++) {
+            float ele = twoDimRead(QK_t, row, col, N) / rowsum;
+            twoDimWrite(QK_t, row, col, N, ele);
+            //printf("%d, %d, %.9f\n", row, col, ele);
+          }
+        }
+        // dot V
+        // row
+        // done
+        // int tileSize = 4; // moved to above
+        for (int row = 0; row < N; row += tileSize) {
+          // loop over Embedding Dimensionality
+          float val = 0.0f;
+          for (int col = 0; col < d; col += tileSize) {
+            for (int mid = 0; mid < N; mid += tileSize) {
+              // float ele = twoDimRead(QK_t, row, mid, N);
+              // float v = fourDimRead(V, b, h, mid, col, H, N, d);
+              // val += ele * v;
+              // iterate inside the tile
+              for (int rowidx = row; rowidx < min(N, row + tileSize);
+                   rowidx++) {
+                for (int colidx = col; colidx < min(d, col + tileSize);
+                     colidx++) {
+                  // read value from (possibly written previously) tile
+                  val = fourDimRead(O, b, h, rowidx, colidx, H, N, d);
+                  for (int mididx = mid; mididx < min(N, mid + tileSize);
+                       mididx++) {
+                    float ele = twoDimRead(QK_t, rowidx, mididx, N);
+                    float v = fourDimRead(V, b, h, mididx, colidx, H, N, d);
+                    val += ele * v;
+                  }
+                  // write to corresponding tile
+                  fourDimWrite(O, b, h, rowidx, colidx, H, N, d, val);
+                }
+              }
+            }
+            // printf("%d, %d, %.9f\n", row, col, val);
+            //  fourDimWrite(O, b, h, row, col, H, N, d, val);
+          }
+        }
+      }
+    }
+
+
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
