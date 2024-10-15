@@ -234,13 +234,14 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
           for (int col = 0; col < N; col++) {
             float qk_t = 0.0f;
             // loop over Embedding Dimensionality
+            // twoDimWrite(QK_t, row, col, N, qk_t); // init 1st element as 0
             for (int mid = 0; mid < d; mid++) {
-              // float q = fourDimRead(Q, b, h, row, mid, H, N, d);
-              // float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
-              //  accumulate Q dot K_t for each 1 iteration
-              // qk_t += q * k_t;
-              //  iterate inside the tile
-              for (int rowidx = row; rowidx < min(N, row + tileSize);
+              float q = fourDimRead(Q, b, h, row, mid, H, N, d);
+              float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
+              //   accumulate Q dot K_t for each 1 iteration
+              qk_t += q * k_t;
+              //   iterate inside the tile
+              /*for (int rowidx = row; rowidx < min(N, row + tileSize);
                    rowidx++) {
                 for (int colidx = col; colidx < min(N, col + tileSize);
                      colidx++) {
@@ -255,10 +256,11 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
                   // write to corresponding tile
                   twoDimWrite(QK_t, rowidx, colidx, N, qk_t);
                 }
-              }
+              }*/
             }
             // write Q dot K_t to O
-            //printf("%d, %d, %.9f\n", row, col, qk_t);
+            // printf("%d, %d, %.9f\n", row, col, qk_t);
+            twoDimWrite(QK_t, row, col, N, qk_t);
           }
         }
         // softmax()

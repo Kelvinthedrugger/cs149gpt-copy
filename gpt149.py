@@ -167,7 +167,7 @@ def testTemplate(customFunc, params, test_key):
             QKS1 = customFunc()
             end = time.time()
             manual_time = end - start
-    torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
+    #torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
     assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
     print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4))
     #print("Pytorch Execution Time:", pytorch_time, "\n")
@@ -180,6 +180,11 @@ def testTemplate(customFunc, params, test_key):
             print (test_key+ " statistics")
             print("cpu time: ", str(cpu_time / 1000.0) + "ms")
             print("mem usage: ", mem_usage, "bytes")
+    # this works, but it's boring if we don't implement the full model: see trace.json
+    fname = "%s.json" % (test_key.replace(" ","_"))
+    if not path.isfile(fname):
+        prof.export_chrome_trace(fname)
+        print("dump %s succeeded" % (fname))
 
 def part0Test(N, d, B, H):
     print("Running part 0 test: Pytorch Matmul + Softmax")
@@ -215,9 +220,9 @@ def part2Test(N, d, B, H):
     attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myUnfusedAttentionBlocked, params, "REFERENCE - BLOCKED MATMUL + UNFUSED SOFTMAX")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myUnfusedAttentionBlocked, params, "REFERENCE - BLOCKED MATMUL + UNFUSED SOFTMAX")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myUnfusedAttentionBlocked, params, "STUDENT - BLOCKED MATMUL + UNFUSED SOFTMAX")
 
@@ -227,9 +232,9 @@ def part3Test(N, d, B, H):
     attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFusedAttention, params, "REFERENCE - FUSED ATTENTION")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myFusedAttention, params, "REFERENCE - FUSED ATTENTION")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFusedAttention, params, "STUDENT - FUSED ATTENTION")
 
@@ -239,9 +244,9 @@ def part4Test(N, d, B, H, bc, br):
     attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
@@ -297,7 +302,7 @@ def main():
         if args.testname == "part0":
             part0Test(N, d, B, H)
         elif args.testname == "part1":
-            part1Test(3, 2, 1, 1)
+            part1Test(N, d, B, H) #3, 2, 1, 1)
         elif args.testname == "part2":
             part2Test(N, d, B, H)
         elif args.testname == "part3":
