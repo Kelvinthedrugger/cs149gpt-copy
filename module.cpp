@@ -229,8 +229,7 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
         //  i'm guessing it's because Q & K are accessed
         //  in row major originally, so this blocked version
         //  doesn't help a lot. consider to adjust the direction of access
-        int tileSize = 4;
-        for (int row = 0; row < N; row++) {
+        /*for (int row = 0; row < N; row++) {
           for (int col = 0; col < N; col++) {
             float qk_t = 0.0f;
             // loop over Embedding Dimensionality
@@ -240,11 +239,28 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
               float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
               //   accumulate Q dot K_t for each 1 iteration
               qk_t += q * k_t;
+            }
+            // write Q dot K_t to O
+            // printf("%d, %d, %.9f\n", row, col, qk_t);
+            twoDimWrite(QK_t, row, col, N, qk_t);
+          }
+        }*/
+        int tileSize = 4;
+        // do i have to init QK_t with 0?
+        for (int row = 0; row < N; row += tileSize) {
+          for (int col = 0; col < N; col+=tileSize) {
+            float qk_t = 0.0f;
+            // loop over Embedding Dimensionality
+            for (int mid = 0; mid < d; mid+=tileSize) {
+              //   accumulate Q dot K_t for each 1 iteration
               //   iterate inside the tile
-              /*for (int rowidx = row; rowidx < min(N, row + tileSize);
+              for (int rowidx = row; rowidx < min(N, row + tileSize);
                    rowidx++) {
                 for (int colidx = col; colidx < min(N, col + tileSize);
                      colidx++) {
+                  // write 0 if mid == 0 ? don't have to, since
+                  // the memory has been statically allocated
+                  // -> init'ed as 0 by default
                   // read value from (possibly written previously) tile
                   qk_t = twoDimRead(QK_t, rowidx, colidx, N);
                   for (int mididx = mid; mididx < min(d, mid + tileSize);
@@ -256,11 +272,9 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
                   // write to corresponding tile
                   twoDimWrite(QK_t, rowidx, colidx, N, qk_t);
                 }
-              }*/
+              }
             }
             // write Q dot K_t to O
-            // printf("%d, %d, %.9f\n", row, col, qk_t);
-            twoDimWrite(QK_t, row, col, N, qk_t);
           }
         }
         // softmax()
