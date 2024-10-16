@@ -469,6 +469,88 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     std::vector<float> lnew = formatTensor(LnewTensor);
 
     // -------- YOUR CODE HERE  -------- //
+    // segfalut for custom input (set by me)
+    // check 'Br', 'Bc', should handle boundary edge cases: Br = min(N-i, Br)
+    // (?)
+    // double check the address we read from / write to
+    // twodimread & twodimwrite?? sizeX should be d instead of N?
+    for (int b = 0; b < B; b++) {
+      for (int h = 0; h < H; h++) {
+        for (int j = 0; j < N; j += Bc) {
+          // load Kj, Vj (Bc x d)
+          for (int idx = j; idx < min(N, j + Bc); idx++) {
+            for (int mid = 0; mid < d; mid++) {
+              float tmp;
+              tmp = fourDimRead(K, b, h, idx, mid, H, N, d);
+              twoDimWrite(Kj, idx, mid, Bc, tmp);
+              tmp = fourDimRead(V, b, h, idx, mid, H, N, d);
+              twoDimWrite(Vj, idx, mid, Bc, tmp);
+            }
+          }
+          for (int i = 0; i < N; i += Br) {
+            // load li (Br)
+            for (int mid = 0; mid < min(N - i, Br); mid++)
+              li[mid] = l[i + mid];
+            // load Qi, Oi (Br x d)
+            for (int idx = i; idx < min(N, i + Br); idx++) {
+              for (int mid = 0; mid < d; mid++) {
+                float tmp;
+                tmp = fourDimRead(Q, b, h, idx, mid, H, N, d);
+                twoDimWrite(Qi, idx, mid, Br, tmp);
+                tmp = fourDimRead(O, b, h, idx, mid, H, N, d);
+                twoDimWrite(Oi, idx, mid, Br, tmp);
+              }
+            }
+            // compute Sij (Br x Bc)
+            // out of bound? unlikely, since it's statically allocated
+            //  & init'ed to 0 by default
+            for (int r = 0; r < Br; r++) {
+              for (int c = 0; c < Bc; c++) {
+                float sij = 0.0f;
+                for (int mid = 0; mid < d; mid++) {
+                  float qi = twoDimRead(Qi, r, mid, Br);
+                  float kj = twoDimRead(Kj, c, mid, Bc);
+                  sij += qi * kj;
+                }
+                twoDimWrite(Sij, r, c, Br, sij);
+              }
+            }
+            // compute Pij = exp(Sij)
+            for (int r = 0; r < Br; r++) {
+              for (int c = 0; c < Bc; c++) {
+                float sij = twoDimRead(Sij, r, c, Br);
+                float pij = exp(sij);
+                twoDimWrite(Pij, r, c, Br, pij);
+                // compute lij (Br)
+                lij[r] += pij;
+              }
+              // lnew = li + lij & writeback
+              lnew[r] = li[r] + lij[r];
+              // compute Oi = (li * Oi + Pij dot Vj) / lnew
+              for (int mid = 0; mid < d; mid++) {
+                float oi = twoDimRead(Oi, r, mid, Br);
+                oi *= li[r];
+                for (int c = 0; c < Bc; c++) {
+                  float pij = twoDimRead(Pij, r, c, Br);
+                  float vj = twoDimRead(Vj, c, mid, Bc);
+                  oi += pij * vj;
+                }
+                oi /= lnew[r];
+                twoDimWrite(Oi, r, mid, Br, oi);
+              }
+              // write Oi back to O
+              // not done, so much caveat
+              int oaddr = i + r; // min(i + r, N - 1);
+              for (int mid = 0; mid < d; mid++) {
+                float oo = twoDimRead(Oi, r, mid, Br);
+                if (oaddr < N)
+                  fourDimWrite(O, b, h, oaddr, mid, H, N, d, oo);
+              }
+            }
+          }
+        }
+      }
+    }
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
