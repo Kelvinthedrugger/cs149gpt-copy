@@ -542,21 +542,6 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 //  fourDimWrite(O, b, h, rowaddr, coladdr, H, N, d, pij);
               }
             } // end of Pij
-            // lij = rowsum(Pij) & lnew = li + lij
-            /*for (int r = 0; r < min(Br, N - i); r++) {
-              lij[r] = 0.0f; // only rowsum
-              for (int c = 0; c < min(Bc, N - j); c++) {
-                float pij = twoDimRead(Pij, r, c, Br);
-                lij[r] += pij;
-              }
-              lnew[r] = li[r] + lij[r];
-              // write lnew back!
-              int l_addr = i + r;
-              if (l_addr < N)
-                l[l_addr] = lnew[r];
-            }*/
-            // printf("i: %d, j: %d, sum: %.9f\n", i, j, l[i]);
-
             // compute Oi = (li*Oi + Pij dot Vj) / lnew
             // do Pij dot Vj first (Br x Bc) dot (Bc x d)
             for (int r = 0; r < min(Br, N - i); r++) {
