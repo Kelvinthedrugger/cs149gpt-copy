@@ -541,7 +541,11 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 twoDimWrite(PV, r, mid, Br, pv);
                 // debug
                 // fourDimWrite(O, b, h, r_addr, mid, H, N, d, pv);
-                // compute Oi (Br x d)
+              }
+              // printf("i = %d, j = %d, lnew[] = %.9f\n", i, j, lnew[r]);
+              // compute Oi (Br x d)
+              for (int mid = 0; mid < d; mid++) {
+                float pv = twoDimRead(PV, r, mid, Br);
                 float oi = twoDimRead(Oi, r, mid, Br);
                 oi *= li[r];
                 oi += pv;
@@ -549,11 +553,10 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 // write back Oi
                 twoDimWrite(Oi, r, mid, Br, oi);
                 // write back to O, l
-                // fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
-                l[r_addr] = lnew[r];
+                fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
               }
-              // printf("i = %d, j = %d, lnew[] = %.9f\n", i, j, lnew[r]);
-            }
+              l[r_addr] = lnew[r];
+            } // end of r
           } // end of i
         } // end of j
 
