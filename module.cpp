@@ -490,13 +490,16 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               }
             }
           } // end of load Kj, Vj (Bc x d)
+          // reset l to 0s
+          // for (int idx = 0; idx < N; idx++)
+          //  l[idx] = 0.0f;
           for (int i = 0; i < N; i += Br) {
             // load li (Br)
             for (int r = 0; r < Br; r++) {
               int rowaddr = i + r;
-              if (rowaddr < N)
-                li[r] = l[rowaddr];
-              // load Qi, Oi (Br x d)
+              // if (rowaddr < N)
+              //   li[r] = l[rowaddr];
+              //  load Qi, Oi (Br x d)
               for (int mid = 0; mid < d; mid++) {
                 if (rowaddr < N) {
                   float qi = fourDimRead(Q, b, h, rowaddr, mid, H, N, d);
@@ -517,6 +520,12 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                   sij += qi * kj_t;
                 }
                 twoDimWrite(Sij, r, c, Br, sij);
+                // debug
+                // correct
+                // int rowaddr = i + r;
+                // int coladdr = j + c;
+                // if (rowaddr < N && coladdr < N)
+                //   fourDimWrite(O, b, h, rowaddr, coladdr, H, N, d, sij);
               }
             } // end of Sij
             // compute Pij = exp(Sij) (Br x Bc)
@@ -525,10 +534,17 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 float sij = twoDimRead(Sij, r, c, Br);
                 float pij = exp(sij);
                 twoDimWrite(Pij, r, c, Br, pij);
+                // debug
+                // correct
+                // int rowaddr = i + r;
+                // int coladdr = j + c;
+                // if (rowaddr < N && coladdr < N)
+                //  fourDimWrite(O, b, h, rowaddr, coladdr, H, N, d, pij);
               }
             } // end of Pij
             // lij = rowsum(Pij) & lnew = li + lij
-            for (int r = 0; r < min(Br, N - i); r++) {
+            /*for (int r = 0; r < min(Br, N - i); r++) {
+              lij[r] = 0.0f; // only rowsum
               for (int c = 0; c < min(Bc, N - j); c++) {
                 float pij = twoDimRead(Pij, r, c, Br);
                 lij[r] += pij;
@@ -538,29 +554,47 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               int l_addr = i + r;
               if (l_addr < N)
                 l[l_addr] = lnew[r];
-            }
+            }*/
+            // printf("i: %d, j: %d, sum: %.9f\n", i, j, l[i]);
+
             // compute Oi = (li*Oi + Pij dot Vj) / lnew
             // do Pij dot Vj first (Br x Bc) dot (Bc x d)
             for (int r = 0; r < min(Br, N - i); r++) {
-              float pv = 0.0f;
+              float rowsum = 0.0f; // of Pij
               for (int c = 0; c < min(Bc, N - j); c++) {
                 float pij = twoDimRead(Pij, r, c, Br);
-                for (int mid = 0; mid < d; mid++) {
+                rowsum += pij;
+              }
+              lij[r] = rowsum;
+              for (int mid = 0; mid < d; mid++) {
+                float pv = 0.0f;
+                for (int c = 0; c < min(Bc, N - j); c++) {
+                  float pij = twoDimRead(Pij, r, c, Br);
+                  rowsum += pij;
                   float vj = twoDimRead(Vj, c, mid, Bc);
                   pv += pij * vj;
                 }
+                twoDimWrite(PV, r, mid, Br, pv);
               }
               int rowaddr = i + r;
+              if (rowaddr < N)
+                li[r] = l[rowaddr];
+              // lij[r] = rowsum;
+              lnew[r] = li[r] + lij[r];
               for (int mid = 0; mid < d; mid++) {
                 float oi = twoDimRead(Oi, r, mid, Br);
                 oi *= li[r];
-                oi += pv;
+                // printf("\nr=%d, li[r] = %.9f\n", r, li[r]);
+                oi += twoDimRead(PV, r, mid, Br);
                 oi /= lnew[r];
                 twoDimWrite(Oi, r, mid, Br, oi);
                 // write back to O
                 if (rowaddr < N)
                   fourDimWrite(O, b, h, rowaddr, mid, H, N, d, oi);
               }
+              // write lnew back to l
+              if (rowaddr < N)
+                l[rowaddr] = lnew[r];
             } // end of compute Oi
           }   // end of i
         }     // end of j
