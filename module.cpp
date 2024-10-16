@@ -469,6 +469,68 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     std::vector<float> lnew = formatTensor(LnewTensor);
 
     // -------- YOUR CODE HERE  -------- //
+    // copy from part 3
+    at::Tensor ORowTensor = at::zeros({N}, at::kFloat);
+    // 1D of size N
+    std::vector<float> ORow = formatTensor(ORowTensor);
+    for (int b = 0; b < B; b++) {
+      // loop over heads
+      for (int h = 0; h < H; h++) {
+        /*for (int row = 0; row < N; row += Br) {
+          for (int r = 0; r < Br; r++) {
+            int rowaddr = row + r;
+            float qi, kj, vj, qk_t = 0.0f;
+            for (int col = 0; col < N; col += Bc) {
+              for (int c = 0; c < Bc; c++) {
+                int coladdr = col + c;
+                for (int mid = 0; mid < d; mid++) {
+                  if (rowaddr < N) {
+                    qi = fourDimRead(Qi, b, h, rowaddr, mid, H, N, d);
+                    li[r] = l[rowaddr];
+                  }
+                  if (coladdr < N) {
+                    kj = fourDimRead(Kj, b, h, coladdr, mid, H, N, d);
+                    vj = fourDimRead(Vj, b, h, coladdr, mid, H, N, d);
+                  }
+                  qk_t += qi * kj;
+                }
+              }
+            }
+          }
+        }*/
+        // compute Q dot K_t & exp'ed it & accumulate rowsum
+        for (int row = 0; row < N; row++) {
+          // Q dot K_t
+          float rowsum = 0.0f; // for softmax
+          for (int col = 0; col < N; col++) {
+            float qk_t = 0.0f;
+            for (int mid = 0; mid < d; mid++) {
+              float q = fourDimRead(Q, b, h, row, mid, H, N, d);
+              float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
+              qk_t += q * k_t;
+            }
+            float exp_qkt = exp(qk_t);
+            rowsum += exp_qkt;
+            ORow[col] = exp_qkt;
+          }
+          // compute softmax
+          for (int col = 0; col < N; col++) {
+            ORow[col] /= rowsum;
+          }
+          // dot V
+          for (int col = 0; col < d; col++) {
+            float val = 0.0f;
+            for (int mid = 0; mid < N; mid++) {
+              // load p,v -> dot -> write back
+              float p = ORow[mid];
+              float v = fourDimRead(V, b, h, mid, col, H, N, d);
+              val += p * v;
+            }
+            fourDimWrite(O, b, h, row, col, H, N, d, val);
+          }
+        }
+      }
+    }
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
