@@ -534,8 +534,34 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 lij[r] += pij;
               }
               lnew[r] = li[r] + lij[r];
-              // TODO write lnew back to main memory at the end of 'i' loop
+              // write lnew back!
+              int l_addr = i + r;
+              if (l_addr < N)
+                l[l_addr] = lnew[r];
             }
+            // compute Oi = (li*Oi + Pij dot Vj) / lnew
+            // do Pij dot Vj first (Br x Bc) dot (Bc x d)
+            for (int r = 0; r < min(Br, N - i); r++) {
+              float pv = 0.0f;
+              for (int c = 0; c < min(Bc, N - j); c++) {
+                float pij = twoDimRead(Pij, r, c, Br);
+                for (int mid = 0; mid < d; mid++) {
+                  float vj = twoDimRead(Vj, c, mid, Bc);
+                  pv += pij * vj;
+                }
+              }
+              int rowaddr = i + r;
+              for (int mid = 0; mid < d; mid++) {
+                float oi = twoDimRead(Oi, r, mid, Br);
+                oi *= li[r];
+                oi += pv;
+                oi /= lnew[r];
+                twoDimWrite(Oi, r, mid, Br, oi);
+                // write back to O
+                if (rowaddr < N)
+                  fourDimWrite(O, b, h, rowaddr, mid, H, N, d, oi);
+              }
+            } // end of compute Oi
           }   // end of i
         }     // end of j
       }

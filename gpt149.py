@@ -21,7 +21,10 @@ if not path.exists(ispc_path): ispc_path = ""
 
 print("\nCompiling code into a PyTorch module...\n\n")
 #mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
-mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])
+# openmp flag won't work even after i export the path (llvm)
+mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])#,"-fopenmp"])
+# works on my mac
+#mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-march=native","-O3"])
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 
 class CustomAttention(nn.Module):
