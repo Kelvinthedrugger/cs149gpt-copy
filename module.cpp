@@ -474,31 +474,90 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     // 1D of size N
     std::vector<float> ORow = formatTensor(ORowTensor);
     for (int b = 0; b < B; b++) {
-      // loop over heads
       for (int h = 0; h < H; h++) {
-        /*for (int row = 0; row < N; row += Br) {
-          for (int r = 0; r < Br; r++) {
-            int rowaddr = row + r;
-            float qi, kj, vj, qk_t = 0.0f;
-            for (int col = 0; col < N; col += Bc) {
-              for (int c = 0; c < Bc; c++) {
-                int coladdr = col + c;
-                for (int mid = 0; mid < d; mid++) {
-                  if (rowaddr < N) {
-                    qi = fourDimRead(Qi, b, h, rowaddr, mid, H, N, d);
-                    li[r] = l[rowaddr];
-                  }
-                  if (coladdr < N) {
-                    kj = fourDimRead(Kj, b, h, coladdr, mid, H, N, d);
-                    vj = fourDimRead(Vj, b, h, coladdr, mid, H, N, d);
-                  }
-                  qk_t += qi * kj;
-                }
-              }
+        for (int j = 0; j < N; j += Bc) {
+          // load Kj, Vj (Bc x d)
+          int Bc_size = min(Bc, N - j); // avoid out of bound access
+          for (int c = 0; c < Bc_size; c++) {
+            int c_addr = c + j; // guaranteed to be within the bound
+            for (int mid = 0; mid < d; mid++) {
+              float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
+              float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
+              twoDimWrite(Kj, c, mid, Bc, kj);
+              twoDimWrite(Vj, c, mid, Bc, vj);
             }
           }
-        }*/
-        // compute Q dot K_t & exp'ed it & accumulate rowsum
+          // i iter
+          for (int i = 0; i < N; i += Br) {
+            // load Qi, Oi, li (Br x d)
+            int Br_size = min(Br, N - i);
+            for (int r = 0; r < Br_size; r++) {
+              int r_addr = r + i;
+              li[r] = l[r_addr];
+              for (int mid = 0; mid < d; mid++) {
+                float qi = fourDimRead(Q, b, h, r_addr, mid, H, N, d);
+                float oi = fourDimRead(O, b, h, r_addr, mid, H, N, d);
+                twoDimWrite(Qi, r, mid, Br, qi);
+                twoDimWrite(Oi, r, mid, Br, oi);
+              }
+            } // end of load Qi Oi li
+            // compute Sij = Qi dot Kj_t (Br x Bc) & Pij
+            for (int r = 0; r < Br_size; r++) {
+              int r_addr = r + i; // to write back to O & l
+              float rowsum = 0.0f;
+              for (int c = 0; c < Bc_size; c++) {
+                float sij = 0.0f;
+                for (int mid = 0; mid < d; mid++) {
+                  float qi = twoDimRead(Qi, r, mid, Br);
+                  float kj_t = twoDimRead(Kj, c, mid, Bc);
+                  sij += qi * kj_t;
+                }
+                // write to Sij
+                twoDimWrite(Sij, r, c, Br, sij);
+                float pij = exp(sij);
+                // write to Pij
+                twoDimWrite(Pij, r, c, Br, pij);
+                // accumulate rowsum
+                rowsum += pij;
+                // debug
+                // int c_addr = c + j;
+                // fourDimWrite(O, b, h, r_addr, c_addr, H, N, d, sij); //
+                // correct fourDimWrite(O, b, h, r_addr, c_addr, H, N, d, pij);
+                // // correct
+              }
+              lij[r] = rowsum;
+              lnew[r] = li[r] + lij[r];
+              // printf("i = %d, j = %d, rowsum = %.9f, lij: %.9f, lnew:
+              // %.9f\n",i, j, rowsum, lij[r], lnew[r]);
+              // compute PV = Pij dot Vj (Br x d)
+              for (int mid = 0; mid < d; mid++) {
+                float pv = 0.0f;
+                for (int c = 0; c < Bc_size; c++) {
+                  float pij = twoDimRead(Pij, r, c, Br);
+                  float vj = twoDimRead(Vj, c, mid, Bc);
+                  pv += pij * vj;
+                }
+                // write to PV (Br x d)
+                twoDimWrite(PV, r, mid, Br, pv);
+                // debug
+                // fourDimWrite(O, b, h, r_addr, mid, H, N, d, pv);
+                // compute Oi (Br x d)
+                float oi = twoDimRead(Oi, r, mid, Br);
+                oi *= li[r];
+                oi += pv;
+                oi /= lnew[r];
+                // write back Oi
+                twoDimWrite(Oi, r, mid, Br, oi);
+                // write back to O, l
+                // fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
+                l[r_addr] = lnew[r];
+              }
+              // printf("i = %d, j = %d, lnew[] = %.9f\n", i, j, lnew[r]);
+            }
+          } // end of i
+        } // end of j
+
+        /*// compute Q dot K_t & exp'ed it & accumulate rowsum
         for (int row = 0; row < N; row++) {
           // Q dot K_t
           float rowsum = 0.0f; // for softmax
@@ -528,7 +587,7 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
             }
             fourDimWrite(O, b, h, row, col, H, N, d, val);
           }
-        }
+        }*/
       }
     }
 
