@@ -478,77 +478,66 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
       for (int h = 0; h < H; h++) {
         for (int j = 0; j < N; j += Bc) {
           // load Kj, Vj (Bc x d)
-          for (int idx = j; idx < min(N, j + Bc); idx++) {
+          for (int c = 0; c < Bc; c++) {
+            int rowaddr = j + c;
             for (int mid = 0; mid < d; mid++) {
-              float tmp;
-              tmp = fourDimRead(K, b, h, idx, mid, H, N, d);
-              twoDimWrite(Kj, idx, mid, Bc, tmp);
-              tmp = fourDimRead(V, b, h, idx, mid, H, N, d);
-              twoDimWrite(Vj, idx, mid, Bc, tmp);
-            }
-          }
-          for (int i = 0; i < N; i += Br) {
-            // load li (Br)
-            for (int mid = 0; mid < min(N - i, Br); mid++)
-              li[mid] = l[i + mid];
-            // load Qi, Oi (Br x d)
-            for (int idx = i; idx < min(N, i + Br); idx++) {
-              for (int mid = 0; mid < d; mid++) {
-                float tmp;
-                tmp = fourDimRead(Q, b, h, idx, mid, H, N, d);
-                twoDimWrite(Qi, idx, mid, Br, tmp);
-                tmp = fourDimRead(O, b, h, idx, mid, H, N, d);
-                twoDimWrite(Oi, idx, mid, Br, tmp);
+              if (rowaddr < N) {
+                float kj = fourDimRead(K, b, h, rowaddr, mid, H, N, d);
+                float vj = fourDimRead(V, b, h, rowaddr, mid, H, N, d);
+                // Bc or N? Bc
+                twoDimWrite(Kj, c, mid, Bc, kj);
+                twoDimWrite(Vj, c, mid, Bc, vj);
               }
             }
-            // compute Sij (Br x Bc)
-            // out of bound? unlikely, since it's statically allocated
-            //  & init'ed to 0 by default
+          } // end of load Kj, Vj (Bc x d)
+          for (int i = 0; i < N; i += Br) {
+            // load li (Br)
             for (int r = 0; r < Br; r++) {
-              for (int c = 0; c < Bc; c++) {
+              int rowaddr = i + r;
+              if (rowaddr < N)
+                li[r] = l[rowaddr];
+              // load Qi, Oi (Br x d)
+              for (int mid = 0; mid < d; mid++) {
+                if (rowaddr < N) {
+                  float qi = fourDimRead(Q, b, h, rowaddr, mid, H, N, d);
+                  float oi = fourDimRead(Q, b, h, rowaddr, mid, H, N, d);
+                  twoDimWrite(Qi, r, mid, Br, qi);
+                  twoDimWrite(Oi, r, mid, Br, oi);
+                }
+              }
+            } // end of load Qi, Oi, li (Br x d)
+            // compute Sij = Qi dot Kj_t (Br x Bc)
+            // managing tile: check if r or c goes out of bound
+            for (int r = 0; r < min(Br, N - i); r++) {
+              for (int c = 0; c < min(Bc, N - j); c++) {
                 float sij = 0.0f;
                 for (int mid = 0; mid < d; mid++) {
                   float qi = twoDimRead(Qi, r, mid, Br);
-                  float kj = twoDimRead(Kj, c, mid, Bc);
-                  sij += qi * kj;
+                  float kj_t = twoDimRead(Kj, c, mid, Bc);
+                  sij += qi * kj_t;
                 }
                 twoDimWrite(Sij, r, c, Br, sij);
               }
-            }
-            // compute Pij = exp(Sij)
-            for (int r = 0; r < Br; r++) {
-              for (int c = 0; c < Bc; c++) {
+            } // end of Sij
+            // compute Pij = exp(Sij) (Br x Bc)
+            for (int r = 0; r < min(Br, N - i); r++) {
+              for (int c = 0; c < min(Bc, N - j); c++) {
                 float sij = twoDimRead(Sij, r, c, Br);
                 float pij = exp(sij);
                 twoDimWrite(Pij, r, c, Br, pij);
-                // compute lij (Br)
+              }
+            } // end of Pij
+            // lij = rowsum(Pij) & lnew = li + lij
+            for (int r = 0; r < min(Br, N - i); r++) {
+              for (int c = 0; c < min(Bc, N - j); c++) {
+                float pij = twoDimRead(Pij, r, c, Br);
                 lij[r] += pij;
               }
-              // lnew = li + lij & writeback
               lnew[r] = li[r] + lij[r];
-              // compute Oi = (li * Oi + Pij dot Vj) / lnew
-              for (int mid = 0; mid < d; mid++) {
-                float oi = twoDimRead(Oi, r, mid, Br);
-                oi *= li[r];
-                for (int c = 0; c < Bc; c++) {
-                  float pij = twoDimRead(Pij, r, c, Br);
-                  float vj = twoDimRead(Vj, c, mid, Bc);
-                  oi += pij * vj;
-                }
-                oi /= lnew[r];
-                twoDimWrite(Oi, r, mid, Br, oi);
-              }
-              // write Oi back to O
-              // not done, so much caveat
-              int oaddr = i + r; // min(i + r, N - 1);
-              for (int mid = 0; mid < d; mid++) {
-                float oo = twoDimRead(Oi, r, mid, Br);
-                if (oaddr < N)
-                  fourDimWrite(O, b, h, oaddr, mid, H, N, d, oo);
-              }
+              // TODO write lnew back to main memory at the end of 'i' loop
             }
-          }
-        }
+          }   // end of i
+        }     // end of j
       }
     }
 
