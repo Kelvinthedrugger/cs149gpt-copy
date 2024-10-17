@@ -229,7 +229,7 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
         //  i'm guessing it's because Q & K are accessed
         //  in row major originally, so this blocked version
         //  doesn't help a lot. consider to adjust the direction of access
-        // from part 1 (190 ms in total)
+        // from part 1 (190 ms in total) (for tileSize=4; = 16 gives us 157 ms)
         for (int row = 0; row < N; row++) {
           for (int col = 0; col < N; col++) {
             float qk_t = 0.0f;
@@ -246,7 +246,7 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
             twoDimWrite(QK_t, row, col, N, qk_t);
           }
         }
-        int tileSize = 4;
+        int tileSize = 16;
         // do i have to init QK_t with 0?
         // for (int row = 0; row < N; row += tileSize) {
         // for (int col = 0; col < N; col+=tileSize) {
