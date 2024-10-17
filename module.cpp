@@ -528,8 +528,6 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
               // above are correct
               // compute Oi, PV
-              // now that we've completed everything above (Pij, lij)
-              //  , no more zeros should appear
               // for (int r = 0; r < Br_size; r++) {
               // compute rth row of PV: pij dot vj
               // mid: row direction of Vj (Bc x d)
@@ -543,13 +541,13 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 }
                 // store pv, PV: Br x d
                 twoDimWrite(PV, r, mid, d, pv);
-              }
-              //} // end of r
-              // update Oi
-              // for (int r = 0; r < Br_size; r++) {
-              // int r_addr = r + i; // to write back to O & l (defined above)
-              for (int mid = 0; mid < d; mid++) {
-                float pv = twoDimRead(PV, r, mid, d);
+                //}
+                //} // end of r
+                // update Oi
+                // for (int r = 0; r < Br_size; r++) {
+                // int r_addr = r + i; // to write back to O & l (defined above)
+                // for (int mid = 0; mid < d; mid++) {
+                /*float*/ pv = twoDimRead(PV, r, mid, d);
                 float oi = twoDimRead(Oi, r, mid, d);
                 oi *= li[r];
                 oi += pv;
@@ -564,10 +562,6 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
         }   // end of j
       }
     }
-
-    // return other tensors (worked), use with a.py
-    // return torch::from_blob(PV.data(), {Br, d}, \
-    // torch::TensorOptions().dtype(torch::kFloat32)).clone();
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
