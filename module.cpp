@@ -470,9 +470,9 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
 
     // -------- YOUR CODE HERE  -------- //
     // copy from part 3
-    at::Tensor ORowTensor = at::zeros({N}, at::kFloat);
+    // at::Tensor ORowTensor = at::zeros({N}, at::kFloat);
     // 1D of size N
-    std::vector<float> ORow = formatTensor(ORowTensor);
+    // std::vector<float> ORow = formatTensor(ORowTensor);
     for (int b = 0; b < B; b++) {
       for (int h = 0; h < H; h++) {
         // set l to 0 before each head started
@@ -486,10 +486,19 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
             for (int mid = 0; mid < d; mid++) {
               float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
               float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
-              twoDimWrite(Kj, c, mid, Bc, kj);
-              twoDimWrite(Vj, c, mid, Bc, vj);
+              twoDimWrite(Kj, c, mid, d, kj); // sizeof 'x', not number of rows...QQ!!!
+              twoDimWrite(Vj, c, mid, d, vj);
+              // printf("kj: %.8f, c: %d, mid: %d, c_addr: %d\n", kj, c, mid, c_addr);
+              // if (c > 0)
+              // {
+              //   return torch::from_blob(Kj.data(), {Bc, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
+              // }
             }
+            // if (c > 0)
+            //   return torch::from_blob(Kj.data(), {Bc, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
           }
+          // return torch::from_blob(Kj.data(), {Bc, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
+          // return torch::from_blob(Vj.data(), {Bc, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
           // i iter
           for (int i = 0; i < N; i += Br) {
             // load Qi, Oi, li (Br x d)
@@ -500,10 +509,11 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               for (int mid = 0; mid < d; mid++) {
                 float qi = fourDimRead(Q, b, h, r_addr, mid, H, N, d);
                 float oi = fourDimRead(O, b, h, r_addr, mid, H, N, d);
-                twoDimWrite(Qi, r, mid, Br, qi);
-                twoDimWrite(Oi, r, mid, Br, oi);
+                twoDimWrite(Qi, r, mid, d, qi);
+                twoDimWrite(Oi, r, mid, d, oi);
               }
             } // end of load Qi Oi li
+            // return torch::from_blob(Qi.data(), {Br, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
             // compute Sij = Qi dot Kj_t (Br x Bc) & Pij
             for (int r = 0; r < Br_size; r++) {
               int r_addr = r + i; // to write back to O & l
@@ -511,15 +521,15 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               for (int c = 0; c < Bc_size; c++) {
                 float sij = 0.0f;
                 for (int mid = 0; mid < d; mid++) {
-                  float qi = twoDimRead(Qi, r, mid, Br);
-                  float kj_t = twoDimRead(Kj, c, mid, Bc);
+                  float qi = twoDimRead(Qi, r, mid, d);
+                  float kj_t = twoDimRead(Kj, c, mid, d);
                   sij += qi * kj_t;
                 }
                 // write to Sij
-                twoDimWrite(Sij, r, c, Br, sij);
+                twoDimWrite(Sij, r, c, Bc, sij);
                 float pij = exp(sij);
                 // write to Pij
-                twoDimWrite(Pij, r, c, Br, pij);
+                twoDimWrite(Pij, r, c, Bc, pij);
                 // accumulate rowsum
                 rowsum += pij;
               }
@@ -539,26 +549,36 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               for (int mid = 0; mid < d; mid++) {
                 float pv = 0.0f;
                 for (int c = 0; c < Bc_size; c++) {
-                  float vj = twoDimRead(Vj, c, mid, Bc);
+                  float vj = twoDimRead(Vj, c, mid, d);
                   // Pij: (Br x Bc)
-                  float pij = twoDimRead(Pij, r, c, Br);
+                  float pij = twoDimRead(Pij, r, c, Bc);
                   pv += pij * vj;
+                  // for debug only, normalized first? (but Pij is already all ones)
+                  // pv /= lnew[r];
                 }
                 // store pv, PV: Br x d
-                twoDimWrite(PV, r, mid, Br, pv);
+                twoDimWrite(PV, r, mid, d, pv);
+                // return Vj
+                // return torch::from_blob(Vj.data(), {Bc, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
+                // if (mid == 2) // wrong, but why? because it's not normalized?
+                  // return torch::from_blob(PV.data(), {Br, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
               }
+              // still suspecting PV
+              // if (j > 0)
             } // end of r
+            // if (i > 0)
+            // return torch::from_blob(PV.data(), {Br, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
             // update Oi
             for (int r = 0; r < Br_size; r++) {
               int r_addr = r + i; // to write back to O & l
               for (int mid = 0; mid < d; mid++) {
-                float pv = twoDimRead(PV, r, mid, Br);
-                float oi = twoDimRead(Oi, r, mid, Br);
+                float pv = twoDimRead(PV, r, mid, d);
+                float oi = twoDimRead(Oi, r, mid, d);
                 oi *= li[r];
                 oi += pv;
                 oi /= lnew[r];
                 // write updated oi back
-                twoDimWrite(Oi, r, mid, Br, oi);
+                twoDimWrite(Oi, r, mid, d, oi);
                 // write to global O
                 fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
               }
