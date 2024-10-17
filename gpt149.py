@@ -167,7 +167,7 @@ def testTemplate(customFunc, params, test_key):
             QKS1 = customFunc()
             end = time.time()
             manual_time = end - start
-    #torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
+    torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
     assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
     print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4))
     #print("Pytorch Execution Time:", pytorch_time, "\n")
@@ -241,7 +241,7 @@ def part3Test(N, d, B, H):
 def part4Test(N, d, B, H, bc, br):
     print("Running Part 4 Test: Flash Attention\n")
     Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
+    #attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
     params = (N, d, B, H)
     #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
@@ -308,7 +308,10 @@ def main():
         elif args.testname == "part3":
             part3Test(N, d, B, H)
         elif args.testname == "part4":
-            part4Test(N, d, B, H, int(args.bc), int(args.br))
+            #part4Test(N, d, B, H, int(args.bc), int(args.br)) #WA
+            part4Test(4, 4, 1, 1, 2, 2) #WA
+            #part4Test(N, d, 1, 1, 1, 1) # correct
+            #part4Test(N, d, B, H, 1, 1) #WA
         elif args.testname == "4Daccess":
             accessTest(1, 2, 4, 4)
         else:

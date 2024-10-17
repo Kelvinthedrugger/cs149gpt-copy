@@ -539,9 +539,12 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 }
                 // write to PV (Br x d)
                 twoDimWrite(PV, r, mid, Br, pv);
-                // debug
-                // fourDimWrite(O, b, h, r_addr, mid, H, N, d, pv);
               }
+              // TODO what's the problem with pij??
+              return torch::from_blob(
+                         PV.data(), {Br, d},
+                         torch::TensorOptions().dtype(torch::kFloat32))
+                  .clone();
               // printf("i = %d, j = %d, lnew[] = %.9f\n", i, j, lnew[r]);
               // compute Oi (Br x d)
               for (int mid = 0; mid < d; mid++) {
@@ -557,9 +560,24 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               }
               l[r_addr] = lnew[r];
             } // end of r
-          } // end of i
-        } // end of j
+            // decided to start from Sij: passed
+            // how about Pij: passed
+            // li? 0, it only lives inside 'r' loop
+            // l: (see below, passed!) [2,2,0,0], since we've only done the
+            //  first block
 
+            // return 1st batch of PV to see how we're doing: wrong
+            // try Oi: looks slightly off
+            return torch::from_blob(
+                       PV.data(), {Br, d},
+                       torch::TensorOptions().dtype(torch::kFloat32))
+                .clone();
+          } // end of i
+        }   // end of j
+        // l passed!
+        return torch::from_blob(l.data(), {N},
+                                torch::TensorOptions().dtype(torch::kFloat32))
+            .clone();
         /*// compute Q dot K_t & exp'ed it & accumulate rowsum
         for (int row = 0; row < N; row++) {
           // Q dot K_t
@@ -593,6 +611,10 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
         }*/
       }
     }
+
+    // return other tensors (worked), use with a.py
+    // return torch::from_blob(PV.data(), {Br, d}, \
+    // torch::TensorOptions().dtype(torch::kFloat32)).clone();
 
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
