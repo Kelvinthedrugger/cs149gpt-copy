@@ -20,8 +20,8 @@ ispc_path = getcwd() + "/module_ispc.o"
 if not path.exists(ispc_path): ispc_path = ""
 
 print("\nCompiling code into a PyTorch module...\n\n")
-#mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
-mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])
+mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"])#, extra_ldflags=[ispc_path])
+#mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 
 class CustomAttention(nn.Module):
