@@ -309,9 +309,10 @@ def main():
             part3Test(N, d, B, H)
         elif args.testname == "part4":
             #part4Test(N, d, B, H, int(args.bc), int(args.br)) #WA
-            part4Test(4, 4, 1, 1, 2, 2) #WA
+            #part4Test(4, 4, 1, 1, 2, 2) #WA
+            # part4Test(4, 4, 1, 1, 1, 1) #correct
             #part4Test(N, d, 1, 1, 1, 1) # correct
-            #part4Test(N, d, B, H, 1, 1) #WA
+            part4Test(N, d, B, H, 1, 1) #correct
         elif args.testname == "4Daccess":
             accessTest(1, 2, 4, 4)
         else:

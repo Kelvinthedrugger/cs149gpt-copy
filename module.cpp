@@ -475,6 +475,9 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     std::vector<float> ORow = formatTensor(ORowTensor);
     for (int b = 0; b < B; b++) {
       for (int h = 0; h < H; h++) {
+        // set l to 0 before each head started
+        for (int i = 0; i < N; i++)
+          l[i] = 0.0f;
         for (int j = 0; j < N; j += Bc) {
           // load Kj, Vj (Bc x d)
           int Bc_size = min(Bc, N - j); // avoid out of bound access
@@ -526,7 +529,7 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               l[r_addr] = lnew[r];
             } // end of r
 
-            // above are correct so for (for the first block)
+            // above are correct
             // compute Oi, PV
             // now that we've completed everything above (Pij, lij)
             //  , no more zeros should appear
