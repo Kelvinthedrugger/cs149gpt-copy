@@ -22,7 +22,10 @@ torch.set_num_threads(NUM_THREADS)
 
 ispc_path = getcwd() + "/module_ispc.o"
 if not path.exists(ispc_path): ispc_path = ""
-ms = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
+#ms = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
+
+ms = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])#, extra_ldflags=[ispc_path])
+
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
@@ -54,7 +57,7 @@ class CausalSelfAttention(nn.Module):
         self.testname = config.testname
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash =False# hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        
+
         if not self.flash:
             #print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
             # causal mask to ensure that attention is only applied to the left in the input sequence
@@ -88,7 +91,7 @@ class CausalSelfAttention(nn.Module):
             y = attD @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
             end_time = time.time()  # Store end time
             self.python_inference_time += end_time - start_time
-            
+
             attS_no_mask = F.softmax(att, dim=-1)
             y_comp = attS_no_mask @ v
 
@@ -125,7 +128,7 @@ class CausalSelfAttention(nn.Module):
                 att2 = ms.myFlashAttention(q, k, v, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, bs, bs, B, H, N, d)
             else:
                 print("Unknown test name: %s" % self.testname)
-            
+
             end_time = time.time()  # Store start time
             self.custom_attn_inference_time += end_time - start_time
             assert torch.allclose(y_comp, att2, atol=1e-02,), correctness_error_message
@@ -175,7 +178,7 @@ class GPTConfig:
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     use_cpp: bool = False # legacy but we keep it because the 2048 model was trained with this
     testname: str = "part0"
-    
+
 class GPT(nn.Module):
 
     def __init__(self, config):
@@ -238,7 +241,7 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
-        
+
         self.forward_times += 1
         for block in self.transformer.h:
             x = block(x)
