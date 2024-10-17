@@ -1,0 +1,2 @@
+torch==2.1.2 --index-url https://download.pytorch.org/whl/cpu # to run module_ref.so on x86-64
+Ninja
