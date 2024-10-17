@@ -538,7 +538,7 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 for (int c = 0; c < Bc_size; c++) {
                   float vj = twoDimRead(Vj, c, mid, Bc);
                   // Pij: (Br x Bc)
-                  float pij = twoDimRead(PV, r, c, Br);
+                  float pij = twoDimRead(Pij, r, c, Br);
                   pv += pij * vj;
                 }
                 // store pv, PV: Br x d
