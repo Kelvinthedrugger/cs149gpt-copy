@@ -526,94 +526,11 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               l[r_addr] = lnew[r];
             } // end of r
             // above are correct so for (for the first block)
-            //  return torch::from_blob(
-            //             Sij.data(), {Br, Bc},
-            //             torch::TensorOptions().dtype(torch::kFloat32))
-            //      .clone();
             // compute Oi, PV
             // now that we've completed everything above (Pij, lij), no more
             //  zeros should appear
-            for (int r = 0; r < Br_size; r++) {
-              // rth row: compute PV = Pij dot Vj (Br x d)
-              for (int mid = 0; mid < d; mid++) {
-                float pv = 0.0f;
-                for (int c = 0; c < Bc_size; c++) {
-                  float pij = twoDimRead(Pij, r, c, Br);
-                  float vj = twoDimRead(Vj, c, mid, Bc);
-                  pv += pij * vj;
-                }
-                // write to PV (Br x d)
-                twoDimWrite(PV, r, mid, Br, pv);
-                if (j > 0 && i == 0)
-                  printf("mid: %d, pv: %.9f\n", mid, pv);
-              }
-              if (j > 0 && i == 0 && r > 0)
-                return torch::from_blob(
-                           PV.data(), {Br, d},
-                           torch::TensorOptions().dtype(torch::kFloat32))
-                    .clone();
-              // compute Oi (Br x d)
-              int r_addr = r + i; // global write
-              for (int mid = 0; mid < d; mid++) {
-                float pv = twoDimRead(PV, r, mid, Br);
-                float oi = twoDimRead(Oi, r, mid, Br);
-                oi *= li[r]; // li is preloaded so it's alright
-                oi += pv;
-                oi /= lnew[r];
-                // write back Oi
-                twoDimWrite(Oi, r, mid, Br, oi);
-                // write back to O, l
-                fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
-              }
-              // (migrate to above since lnew is not modified)
-              // write back lnew to l
-              // l[r_addr] = lnew[r];
-            } // end of r
-            // i == 0, j == 0 passed, check i > 0 (first chunk)
-            // i == Br passed
-            // checking i == 0, j == Bc
-            if (j > 0)
-              return torch::from_blob(
-                         PV.data(), {Br, d},
-                         torch::TensorOptions().dtype(torch::kFloat32))
-                  .clone();
           } // end of i
         }   // end of j
-        // l passed!
-        // return torch::from_blob(l.data(), {N},
-        //                        torch::TensorOptions().dtype(torch::kFloat32))
-        //    .clone();
-        /*// compute Q dot K_t & exp'ed it & accumulate rowsum
-        for (int row = 0; row < N; row++) {
-          // Q dot K_t
-          float rowsum = 0.0f; // for softmax
-          for (int col = 0; col < N; col++) {
-            float qk_t = 0.0f;
-            for (int mid = 0; mid < d; mid++) {
-              float q = fourDimRead(Q, b, h, row, mid, H, N, d);
-              float k_t = fourDimRead(K, b, h, col, mid, H, N, d);
-              qk_t += q * k_t;
-            }
-            float exp_qkt = exp(qk_t);
-            rowsum += exp_qkt;
-            ORow[col] = exp_qkt;
-          }
-          // compute softmax
-          for (int col = 0; col < N; col++) {
-            ORow[col] /= rowsum;
-          }
-          // dot V
-          for (int col = 0; col < d; col++) {
-            float val = 0.0f;
-            for (int mid = 0; mid < N; mid++) {
-              // load p,v -> dot -> write back
-              float p = ORow[mid];
-              float v = fourDimRead(V, b, h, mid, col, H, N, d);
-              val += p * v;
-            }
-            fourDimWrite(O, b, h, row, col, H, N, d, val);
-          }
-        }*/
       }
     }
 
