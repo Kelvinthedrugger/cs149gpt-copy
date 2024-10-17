@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 from torch.profiler import profile, record_function, ProfilerActivity
-#import module_ref as ms
+import module_ref as ms
 
 NUM_THREADS=8
 torch.set_num_threads(NUM_THREADS)
@@ -241,12 +241,12 @@ def part3Test(N, d, B, H):
 def part4Test(N, d, B, H, bc, br):
     print("Running Part 4 Test: Flash Attention\n")
     Q,K,V = createQKVSimple(N,d,B,H)
-    #attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
+    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
     params = (N, d, B, H)
-    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    #testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
-    #time.sleep(3)
+    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
+    time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
