@@ -525,10 +525,41 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               // write back lnew to l
               l[r_addr] = lnew[r];
             } // end of r
+
             // above are correct so for (for the first block)
             // compute Oi, PV
-            // now that we've completed everything above (Pij, lij), no more
-            //  zeros should appear
+            // now that we've completed everything above (Pij, lij)
+            //  , no more zeros should appear
+            for (int r = 0; r < Br_size; r++) {
+              // compute rth row of PV: pij dot vj
+              // mid: row direction of Vj (Bc x d)
+              for (int mid = 0; mid < d; mid++) {
+                float pv = 0.0f;
+                for (int c = 0; c < Bc_size; c++) {
+                  float vj = twoDimRead(Vj, c, mid, Bc);
+                  // Pij: (Br x Bc)
+                  float pij = twoDimRead(PV, r, c, Br);
+                  pv += pij * vj;
+                }
+                // store pv, PV: Br x d
+                twoDimWrite(PV, r, mid, Br, pv);
+              }
+            } // end of r
+            // update Oi
+            for (int r = 0; r < Br_size; r++) {
+              int r_addr = r + i; // to write back to O & l
+              for (int mid = 0; mid < d; mid++) {
+                float pv = twoDimRead(PV, r, mid, Br);
+                float oi = twoDimRead(Oi, r, mid, Br);
+                oi *= li[r];
+                oi += pv;
+                oi /= lnew[r];
+                // write updated oi back
+                twoDimWrite(Oi, r, mid, Br, oi);
+                // write to global O
+                fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
+              }
+            }
           } // end of i
         }   // end of j
       }
