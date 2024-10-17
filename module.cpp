@@ -519,17 +519,21 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 twoDimWrite(Pij, r, c, Br, pij);
                 // accumulate rowsum
                 rowsum += pij;
-                // debug
-                // int c_addr = c + j;
-                // fourDimWrite(O, b, h, r_addr, c_addr, H, N, d, sij); //
-                // correct fourDimWrite(O, b, h, r_addr, c_addr, H, N, d, pij);
-                // // correct
               }
               lij[r] = rowsum;
               lnew[r] = li[r] + lij[r];
-              // printf("i = %d, j = %d, rowsum = %.9f, lij: %.9f, lnew:
-              // %.9f\n",i, j, rowsum, lij[r], lnew[r]);
-              // compute PV = Pij dot Vj (Br x d)
+            } // end of r
+            // above are correct so for (for the first block)
+            // return torch::from_blob(
+            //            lij.data(), {Br},
+            //            torch::TensorOptions().dtype(torch::kFloat32))
+            //     .clone();
+            // compute Oi, PV
+            // now that we've completed everything above (Pij, lij), no more
+            //  zeros should appear
+            for (int r = 0; r < Br_size; r++) {
+              int r_addr = r + i; // to avoid bugs
+              // rth row: compute PV = Pij dot Vj (Br x d)
               for (int mid = 0; mid < d; mid++) {
                 float pv = 0.0f;
                 for (int c = 0; c < Bc_size; c++) {
@@ -540,12 +544,6 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 // write to PV (Br x d)
                 twoDimWrite(PV, r, mid, Br, pv);
               }
-              // TODO what's the problem with pij??
-              return torch::from_blob(
-                         PV.data(), {Br, d},
-                         torch::TensorOptions().dtype(torch::kFloat32))
-                  .clone();
-              // printf("i = %d, j = %d, lnew[] = %.9f\n", i, j, lnew[r]);
               // compute Oi (Br x d)
               for (int mid = 0; mid < d; mid++) {
                 float pv = twoDimRead(PV, r, mid, Br);
@@ -558,26 +556,23 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 // write back to O, l
                 fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
               }
+              // write back lnew to l
               l[r_addr] = lnew[r];
             } // end of r
-            // decided to start from Sij: passed
-            // how about Pij: passed
-            // li? 0, it only lives inside 'r' loop
-            // l: (see below, passed!) [2,2,0,0], since we've only done the
-            //  first block
-
-            // return 1st batch of PV to see how we're doing: wrong
-            // try Oi: looks slightly off
-            return torch::from_blob(
-                       PV.data(), {Br, d},
-                       torch::TensorOptions().dtype(torch::kFloat32))
-                .clone();
+            // i == 0, j == 0 passed, check i > 0 (first chunk)
+            // i == Br passed
+            // checking i == 0, j == Bc
+            if (j > 0)
+              return torch::from_blob(
+                         O.data(), {N, d},
+                         torch::TensorOptions().dtype(torch::kFloat32))
+                  .clone();
           } // end of i
         }   // end of j
         // l passed!
-        return torch::from_blob(l.data(), {N},
-                                torch::TensorOptions().dtype(torch::kFloat32))
-            .clone();
+        // return torch::from_blob(l.data(), {N},
+        //                        torch::TensorOptions().dtype(torch::kFloat32))
+        //    .clone();
         /*// compute Q dot K_t & exp'ed it & accumulate rowsum
         for (int row = 0; row < N; row++) {
           // Q dot K_t
