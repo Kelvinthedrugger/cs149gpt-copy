@@ -357,6 +357,9 @@ torch::Tensor myUnfusedAttentionBlocked(torch::Tensor QTensor, torch::Tensor KTe
 //                 PART 3: FUSED ATTENTION     	              //
 // ---------------------------------------------------------- //
 
+// need to add types here
+extern void one(Q, K, V, O, int b, int h, int H, int N, int d);
+
 torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, torch::Tensor VTensor, torch::Tensor temp,
                 int B, int H, int N, int d){
 
