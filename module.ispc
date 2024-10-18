@@ -2,9 +2,15 @@
 // copied from part 3
 // can pytorch tensor be used here?
 
-extern void one(Q, K, V, O, int b, int h, int H, int N, int d) {
-  at::Tensor ORowTensor = temp.index({torch::indexing::Slice(omp_get_thread_num(),torch::indexing::None)}); 
-  std::vector<float> ORow = formatTensor(ORowTensor); 
+extern void one(
+  std::vector<float> &Q, std::vector<float> &K, 
+  std::vector<float> &V, std::vector<float> &O, /*O: rth row of ORow*/
+  int b, int h, int H, int N, int d) {
+  //at::Tensor ORowTensor = 
+    temp.index({torch::indexing::Slice(omp_get_thread_num(),torch::indexing::None)}); 
+  //std::vector<float> ORow = formatTensor(ORowTensor); 
+  // above 2 lines : temp: size of (num_of_threads, N)
+  //  -> easy for this function to call each row of it & run in parallel
   // YOUR CODE HERE
   // Q dot K_t
   float rowsum = 0.0f; // for softmax
