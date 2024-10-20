@@ -413,9 +413,9 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               for (int mid = 0; mid < N; mid++) {
                 // load p,v -> dot -> write back
                 // compute softmax as well
-                float p = ORow[mid] / rowsum;
+                float p = ORow[mid];
                 float v = fourDimRead(V, b, h, mid, col, H, N, d);
-                val += p * v;
+                val += p * v / rowsum;
               }
               fourDimWrite(O, b, h, row, col, H, N, d, val);
             }
