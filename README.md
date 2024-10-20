@@ -5,6 +5,26 @@ export CC=<your clang path>
 export CXX=<your clang++ path>
 ```
 
+execution result: (or, see [image]("./assets/part3_openmp_m1air_mac.png"))
+
+        -----RUNNING STUDENT IMPLEMENTATION-----
+                         Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg       CPU Mem  Self CPU Mem    # of Calls  
+                  aten::empty         0.02%      13.000us         0.02%      13.000us       3.250us       1.04 Mb       1.04 Mb             4  
+                  aten::clone         0.03%      16.000us         0.34%     194.000us      97.000us       1.00 Mb           0 b             2  
+                  aten::zeros         0.11%      64.000us         0.29%     166.000us      55.333us     548.00 Kb           0 b             3  
+    STUDENT - FUSED ATTENTION        96.19%      54.585ms        99.90%      56.690ms      56.690ms     544.00 Kb      -1.00 Mb             1  
+              model_inference         0.10%      57.000us       100.00%      56.747ms      56.747ms     512.00 Kb     -32.00 Kb             1  
+                aten::flatten         1.24%     704.000us         1.67%     948.000us       1.837us     512.00 Kb           0 b           516  
+             aten::empty_like         0.00%       1.000us         0.00%       2.000us       2.000us     512.00 Kb           0 b             1  
+          aten::empty_strided         0.02%       9.000us         0.02%       9.000us       9.000us     512.00 Kb     512.00 Kb             1  
+                  aten::zero_         0.02%      14.000us         0.16%      90.000us      30.000us           0 b           0 b             3  
+                  aten::fill_         0.13%      76.000us         0.13%      76.000us      76.000us           0 b           0 b             1  
+    Self CPU time total: 56.747ms
+
+    STUDENT - FUSED ATTENTION statistics
+    cpu time:  56.69ms
+    mem usage:  557056 bytes
+
 # Assignment 4: NanoGPT149
 
 **Due Monday Dec 4, 11:59pm PST**
