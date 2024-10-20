@@ -5,7 +5,7 @@ export CC=<your clang path>
 export CXX=<your clang++ path>
 ```
 
-execution result: (or, see [image]("./assets/part3_openmp_m1air_mac.png"))
+execution result: (or, see [assets/mac.png](https://github.com/Kelvinthedrugger/cs149gpt-copy/blob/openmp_mac/assets/part3_openmp_m1air_mac.png))
 
         -----RUNNING STUDENT IMPLEMENTATION-----
                          Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg       CPU Mem  Self CPU Mem    # of Calls  
