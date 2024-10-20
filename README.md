@@ -1,3 +1,10 @@
+### protip
+make sure your clang supports '-fopenmp' flag, if not, export CC & CXX to the one that does
+```bash
+export CC=<your clang path>
+export CXX=<your clang++ path>
+```
+
 # Assignment 4: NanoGPT149
 
 **Due Monday Dec 4, 11:59pm PST**
