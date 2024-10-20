@@ -170,7 +170,7 @@ def testTemplate(customFunc, params, test_key):
     #torch.save(Q,'Q.pt');     torch.save(K,'K.pt');    torch.save(V,'V.pt');    torch.save(QKV,'ans.pt');    torch.save(QKS1,'out.pt');
     assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
     print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4))
-    #print("Pytorch Execution Time:", pytorch_time, "\n")
+    print("Pytorch Execution Time:", pytorch_time, "\n")
     print("Manual Execution Time: ", manual_time, "\n")
     print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
     r = prof.key_averages()
