@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 from torch.profiler import profile, record_function, ProfilerActivity
-import module_ref as ms
+#import module_ref as ms
 
 NUM_THREADS=8
 torch.set_num_threads(NUM_THREADS)
@@ -20,7 +20,7 @@ ispc_path = getcwd() + "/module_ispc.o"
 if not path.exists(ispc_path): ispc_path = ""
 
 print("\nCompiling code into a PyTorch module...\n\n")
-mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"])#, extra_ldflags=[ispc_path])
+mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3", "-fopenmp"])#, extra_ldflags=[ispc_path])
 #mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-O3"])
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 
@@ -232,9 +232,9 @@ def part3Test(N, d, B, H):
     attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFusedAttention, params, "REFERENCE - FUSED ATTENTION")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myFusedAttention, params, "REFERENCE - FUSED ATTENTION")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFusedAttention, params, "STUDENT - FUSED ATTENTION")
 

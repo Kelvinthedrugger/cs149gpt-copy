@@ -1,5 +1,5 @@
 #include <ATen/ATen.h>
-#include <immintrin.h>
+// #include <immintrin.h>
 #include <iostream>
 #include <sys/time.h>
 #include <time.h>
@@ -390,7 +390,8 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
           for (row = 0; row < N; row++) {
             // YRow is moved inside so each OpenMP thread gets a local copy.
             at::Tensor ORowTensor = temp.index({torch::indexing::Slice(
-                omp_get_thread_num(), torch::indexing::None)});
+                /*omp_get_thread_num()*/ at::get_thread_num(),
+                torch::indexing::None)});
             std::vector<float> ORow = formatTensor(ORowTensor);
             // YOUR CODE HERE
             // Q dot K_t
