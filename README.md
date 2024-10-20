@@ -1,3 +1,16 @@
+### run the example
+
+<a target="_blank" id="bt" href="https://colab.research.google.com/github/Kelvinthedrugger/cs149gpt-copy/blob/openmp/run_on_colab.ipynb">
+   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
+</a>
+
+#### note
+
+- it's on branch openmp (so that all flags are used)
+- reference implementation (file: module_ref.so) won't work outside of torch==2.1.2 & x64 cpu
+- performance is dependent on the cpu you run with, number of cpu cores / hardware threads / cache size / etc will certainly affects the result significantly
+
+
 # Assignment 4: NanoGPT149
 
 **Due Monday Dec 4, 11:59pm PST**
