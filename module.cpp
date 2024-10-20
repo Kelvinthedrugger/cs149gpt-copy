@@ -385,7 +385,7 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
         for (int h = 0; h < H; h++){
           // compute Q dot K_t & exp'ed it & accumulate rowsum
           int row = 0;
-#pragma omp parallel for private(row)
+#pragma omp parallel for collapse(1) private(row)
           for (row = 0; row < N; row++) {
             // YRow is moved inside so each OpenMP thread gets a local copy.
             at::Tensor ORowTensor = temp.index({torch::indexing::Slice(
