@@ -406,10 +406,7 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
               rowsum += exp_qkt;
               ORow[col] = exp_qkt;
             }
-            // compute softmax
-            for (int col = 0; col < N; col++) {
-              ORow[col] /= rowsum;
-            }
+            // (following commit 1fc6200)
             // dot V
             for (int col = 0; col < d; col++) {
               float val = 0.0f;
@@ -417,7 +414,7 @@ torch::Tensor myFusedAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
                 // load p,v -> dot -> write back
                 float p = ORow[mid];
                 float v = fourDimRead(V, b, h, mid, col, H, N, d);
-                val += p * v;
+                val += p * v / rowsum;
               }
               fourDimWrite(O, b, h, row, col, H, N, d, val);
             }
