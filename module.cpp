@@ -610,8 +610,8 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
   // below are replicated to run in openmp fast
   std::vector<float> Sij = formatTensor(SijTensor);
   std::vector<float> Pij = formatTensor(PijTensor);
-  std::vector<float> Kj = formatTensor(KjTensor);
-  std::vector<float> Vj = formatTensor(VjTensor);
+  // std::vector<float> Kj = formatTensor(KjTensor);
+  // std::vector<float> Vj = formatTensor(VjTensor);
   std::vector<float> Qi = formatTensor(QiTensor);
   std::vector<float> Oi = formatTensor(OiTensor);
   // std::vector<float> l = formatTensor(LTensor);
@@ -631,6 +631,14 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
           at::get_thread_num(), torch::indexing::None)}));
       for (int i = 0; i < N; i++)
         l[i] = 0.0f;
+        // parallelize Kj, Vj (row access)
+      std::vector<float> Kj =
+          formatTensor(KjTensor.index({torch::indexing::Slice(
+              at::get_thread_num(), torch::indexing::None)}));
+      std::vector<float> Vj =
+          formatTensor(VjTensor.index({torch::indexing::Slice(
+              at::get_thread_num(), torch::indexing::None)}));
+#pragma omp parallel for collapse(1)
       for (j = 0; j < N; j += Bc) {
         // load Kj, Vj (Bc x d)
         int Bc_size = min(Bc, N - j); // avoid out of bound access
@@ -639,8 +647,10 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
           for (int mid = 0; mid < d; mid++) {
             float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
             float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
-            twoDimWrite(Kj, c, mid, d,
-                        kj); // sizeof 'x', not number of rows...QQ!!!
+            // sizeof 'x', not number of rows...QQ!!!
+            // after 'slice', it became 2D, so it's alright?
+            // i.e., we don't need threeDimRead/threeDimWrite?
+            twoDimWrite(Kj, c, mid, d, kj);
             twoDimWrite(Vj, c, mid, d, vj);
           }
         }
