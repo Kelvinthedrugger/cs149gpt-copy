@@ -97,6 +97,26 @@ class CustomAttention(nn.Module):
             #out = ms.myFlashAttention(self.Q, self.K, self.V, self.B, self.H, self.N, self.d, self.blockSize)
             out = ms.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
         return out
+    def OpenMPFlash(self):
+        d = self.d
+        Qi = torch.zeros((self.br, self.d))
+        Kj = torch.zeros((self.bc, self.d))
+        Vj = torch.zeros((self.bc, self.d))
+        # below needs to be replicated no. of threads times
+        # i might as well just increase a dimension?
+        Sij = torch.zeros((NUM_THREADS, self.br, self.bc))
+        Pij = torch.zeros((NUM_THREADS, self.br, self.bc))
+        PV = torch.zeros((NUM_THREADS, self.br, d))
+        Oi = torch.zeros((NUM_THREADS, self.br, d))
+        L = torch.zeros((NUM_THREADS, self.N))
+        Lnew = torch.zeros((NUM_THREADS, self.br))
+        Lij = torch.zeros((NUM_THREADS, self.br))
+        Li = torch.zeros((NUM_THREADS, self.br))
+        if self.isRef:
+            with record_function("STUDENT - FLASH ATTENTION"):
+                out = mr.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
+            return out
+        return
 
 # generates dummy matrices for use in part0
 def createQKVSimple(N,d,B,H):
@@ -250,6 +270,15 @@ def part4Test(N, d, B, H, bc, br):
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
+def part5Test(N, d, B, H, bc, br):
+    print("Running Part 5 Test: OpenMPFlash\n")
+    Q,K,V = createQKVSimple(N,d,B,H)
+    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
+    params = (N, d, B, H)
+    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
+    testTemplate(attentionModuleStudent.OpenMPFlash, params, "STUDENT - OpenMPFlash")
+
+
 def accessTest(B, H, N, d):
     Q,_ ,_ = createQKVSimple(N,d,B,H)
     print("\nTensor Shape:", Q.size())
@@ -313,6 +342,8 @@ def main():
             # part4Test(4, 4, 1, 1, 1, 1) #correct
             #part4Test(N, d, 1, 1, 1, 1) # correct
             #part4Test(N, d, B, H, 1, 1) #correct
+        elif args.testname == "part5":
+            part5Test(N, d, B, H, int(args.bc), int(args.br))
         elif args.testname == "4Daccess":
             accessTest(1, 2, 4, 4)
         else:

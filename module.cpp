@@ -568,6 +568,165 @@ torch::Tensor myFlashAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     return torch::from_blob(O.data(), {B, H, N, d}, torch::TensorOptions().dtype(torch::kFloat32)).clone();
 }
 
+// ---------------------------------------------------------- //
+//                PART 5: OpenMPFlash 		      //
+// ---------------------------------------------------------- //
+inline float threeDimRead(std::vector<float> &tensor, int &x, int &y, int &z,
+                          const int &sizeX, const int &sizeY) {
+  // Note that sizeX is the size of a Row, not the number of rows
+  return tensor[(x * (sizeX) + y) * sizeY + z];
+}
+
+inline void threeDimWrite(std::vector<float> &tensor, int &x, int &y, int &z,
+                          const int &sizeX, const int &sizeY, float &val) {
+  tensor[(x * (sizeX) + y) * sizeY + z] = val;
+}
+
+torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
+                          torch::Tensor VTensor, torch::Tensor QiTensor,
+                          torch::Tensor KjTensor, torch::Tensor VjTensor,
+                          torch::Tensor SijTensor, torch::Tensor PijTensor,
+                          torch::Tensor PVTensor, torch::Tensor OiTensor,
+                          torch::Tensor LTensor, torch::Tensor LiTensor,
+                          torch::Tensor LijTensor, torch::Tensor LnewTensor,
+                          int Bc, int Br, int B, int H, int N, int d) {
+
+  // Q, K, V are passed in with Shape: (B, H, N, d)
+  // Sij, Pij are passed in with Shape: (Br, Bc)
+  // Kj, Vj are passed in with Shape: (Bc, d)
+  // Qi, Oi, and PV  are passed in with Shape: (Br, d)
+  // L in passed in with Shape: (N)
+  // Li, Lij, and Lnew are passed in with shape (Br)
+
+  // Make O Tensor with Shape (B, H, N, d)
+  at::Tensor OTensor = at::zeros({B, H, N, d}, at::kFloat);
+
+  // Format All Tensors into Vectors
+  std::vector<float> O = formatTensor(OTensor);
+  std::vector<float> Q = formatTensor(QTensor);
+  std::vector<float> K = formatTensor(KTensor);
+  std::vector<float> V = formatTensor(VTensor);
+
+  // below are replicated to run in openmp fast
+  std::vector<float> Sij = formatTensor(SijTensor);
+  std::vector<float> Pij = formatTensor(PijTensor);
+  std::vector<float> Kj = formatTensor(KjTensor);
+  std::vector<float> Vj = formatTensor(VjTensor);
+  std::vector<float> Qi = formatTensor(QiTensor);
+  std::vector<float> Oi = formatTensor(OiTensor);
+  // std::vector<float> l = formatTensor(LTensor);
+  std::vector<float> PV = formatTensor(PVTensor);
+  std::vector<float> li = formatTensor(LiTensor);
+  std::vector<float> lij = formatTensor(LijTensor);
+  std::vector<float> lnew = formatTensor(LnewTensor);
+
+  // -------- YOUR CODE HERE  -------- //
+  int b = 0, h = 0, j = 0;
+  // TODO make it work for 3 loops
+#pragma omp parallel for collapse(2)
+  for (b = 0; b < B; b++) {
+    for (h = 0; h < H; h++) {
+      // TODO set l to 0 for each head (parallel)
+      std::vector<float> l = formatTensor(LTensor.index({torch::indexing::Slice(
+          at::get_thread_num(), torch::indexing::None)}));
+      for (int i = 0; i < N; i++)
+        l[i] = 0.0f;
+      for (j = 0; j < N; j += Bc) {
+        // load Kj, Vj (Bc x d)
+        int Bc_size = min(Bc, N - j); // avoid out of bound access
+        for (int c = 0; c < Bc_size; c++) {
+          int c_addr = c + j; // guaranteed to be within the bound
+          for (int mid = 0; mid < d; mid++) {
+            float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
+            float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
+            twoDimWrite(Kj, c, mid, d,
+                        kj); // sizeof 'x', not number of rows...QQ!!!
+            twoDimWrite(Vj, c, mid, d, vj);
+          }
+        }
+        // i iter
+        for (int i = 0; i < N; i += Br) {
+          // load Qi, Oi, li (Br x d)
+          int Br_size = min(Br, N - i);
+          for (int r = 0; r < Br_size; r++) {
+            int r_addr = r + i;
+            li[r] = l[r_addr];
+            for (int mid = 0; mid < d; mid++) {
+              float qi = fourDimRead(Q, b, h, r_addr, mid, H, N, d);
+              float oi = fourDimRead(O, b, h, r_addr, mid, H, N, d);
+              twoDimWrite(Qi, r, mid, d, qi);
+              twoDimWrite(Oi, r, mid, d, oi);
+            }
+          } // end of load Qi Oi li
+          // compute Sij = Qi dot Kj_t (Br x Bc) & Pij
+          for (int r = 0; r < Br_size; r++) {
+            int r_addr = r + i; // to write back to O & l
+            float rowsum = 0.0f;
+            for (int c = 0; c < Bc_size; c++) {
+              float sij = 0.0f;
+              for (int mid = 0; mid < d; mid++) {
+                float qi = twoDimRead(Qi, r, mid, d);
+                float kj_t = twoDimRead(Kj, c, mid, d);
+                sij += qi * kj_t;
+              }
+              // write to Sij
+              twoDimWrite(Sij, r, c, Bc, sij);
+              float pij = exp(sij);
+              // write to Pij
+              twoDimWrite(Pij, r, c, Bc, pij);
+              // accumulate rowsum
+              rowsum += pij;
+            }
+            lij[r] = rowsum;
+            lnew[r] = li[r] + lij[r];
+            // write back lnew to l
+            l[r_addr] = lnew[r];
+            //} // end of r
+
+            // above are correct
+            // compute Oi, PV
+            // for (int r = 0; r < Br_size; r++) {
+            // compute rth row of PV: pij dot vj
+            // mid: row direction of Vj (Bc x d)
+            for (int mid = 0; mid < d; mid++) {
+              float pv = 0.0f;
+              for (int c = 0; c < Bc_size; c++) {
+                float vj = twoDimRead(Vj, c, mid, d);
+                // Pij: (Br x Bc)
+                float pij = twoDimRead(Pij, r, c, Bc);
+                pv += pij * vj;
+              }
+              // store pv, PV: Br x d
+              twoDimWrite(PV, r, mid, d, pv);
+              //}
+              //} // end of r
+              // update Oi
+              // for (int r = 0; r < Br_size; r++) {
+              // int r_addr = r + i; // to write back to O & l (defined above)
+              // for (int mid = 0; mid < d; mid++) {
+              /*float*/ pv = twoDimRead(PV, r, mid, d);
+              float oi = twoDimRead(Oi, r, mid, d);
+              oi *= li[r];
+              oi += pv;
+              oi /= lnew[r];
+              // write updated oi back
+              twoDimWrite(Oi, r, mid, d, oi);
+              // write to global O
+              fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
+            }
+          }
+        } // end of i
+      }   // end of j
+    }
+  }
+
+  // DO NOT EDIT THIS RETURN STATEMENT //
+  // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and
+  // returns it //
+  return torch::from_blob(O.data(), {B, H, N, d},
+                          torch::TensorOptions().dtype(torch::kFloat32))
+      .clone();
+}
 
 /* DO NOT EDIT THESE BINDINGS */
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -577,4 +736,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("myFlashAttention", &myFlashAttention, "Flash Attention");
   m.def("twoDimRead", &twoDimRead, "twoDimRead");
   m.def("fourDimRead", &fourDimRead, "fourDimRead");
+  // below are for OpenMPFlash
+  m.def("OpenMPFlash", &OpenMPFlash, "OpenMP Flash");
+  m.def("threeDimRead", &threeDimRead, "threeDimRead");
 }
