@@ -9,6 +9,7 @@
 - it's on branch openmp (so that all flags are used)
 - reference implementation (file: module_ref.so) won't work outside of torch==2.1.2 & x64 cpu
 - performance is dependent on the cpu you run with, number of cpu cores / hardware threads / cache size / etc will certainly affects the result significantly
+- have been actively developing on branch [openmp_mac](https://github.com/Kelvinthedrugger/cs149gpt-copy/tree/openmp_mac)
 
 
 # Assignment 4: NanoGPT149
