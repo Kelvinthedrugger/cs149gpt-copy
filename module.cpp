@@ -655,6 +655,13 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
           }
         }
         // i iter
+        std::vector<float> Oi =
+            formatTensor(OiTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Qi =
+            formatTensor(QiTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+#pragma omp parallel for collapse(1)
         for (int i = 0; i < N; i += Br) {
           // load Qi, Oi, li (Br x d)
           int Br_size = min(Br, N - i);
