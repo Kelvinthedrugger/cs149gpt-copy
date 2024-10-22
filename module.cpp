@@ -609,46 +609,35 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
 
   // -------- YOUR CODE HERE  -------- //
   int b = 0, h = 0, j = 0;
-  // TODO make it work for 3 loops
 #pragma omp parallel for collapse(3)
   for (b = 0; b < B; b++) {
     for (h = 0; h < H; h++) {
         // i iter
         for (int i = 0; i < N; i += Br) {
-          // parallelize Kj, Vj (row access)
-          std::vector<float> Kj =
-              formatTensor(KjTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> Vj =
-              formatTensor(VjTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> Oi =
-              formatTensor(OiTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> Qi =
-              formatTensor(QiTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> Sij =
-              formatTensor(SijTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> Pij =
-              formatTensor(PijTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> PV =
-              formatTensor(PVTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> li =
-              formatTensor(LiTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> lij =
-              formatTensor(LijTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> lnew =
-              formatTensor(LnewTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
-          std::vector<float> l =
-              formatTensor(LTensor.index({torch::indexing::Slice(
-                  at::get_thread_num(), torch::indexing::None)}));
+          // "split-Q" scheme, ref to flash attention v2
+          int thread_num = at::get_thread_num();
+          std::vector<float> Kj = formatTensor(KjTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> Vj = formatTensor(VjTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> Oi = formatTensor(OiTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> Qi = formatTensor(QiTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> Sij = formatTensor(SijTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> Pij = formatTensor(PijTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> PV = formatTensor(PVTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> li = formatTensor(LiTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> lij = formatTensor(LijTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> lnew = formatTensor(LnewTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
+          std::vector<float> l = formatTensor(LTensor.index(
+              {torch::indexing::Slice(thread_num, torch::indexing::None)}));
 
           // load Qi, Oi, li (Br x d)
           int Br_size = min(Br, N - i);
@@ -737,8 +726,8 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
                 fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
               }
             }
-          } // end of i
-      }   // end of j
+          } // end of j
+        }   // end of i
     }
   }
 
