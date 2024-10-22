@@ -613,61 +613,43 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
 #pragma omp parallel for collapse(3)
   for (b = 0; b < B; b++) {
     for (h = 0; h < H; h++) {
-      for (j = 0; j < N; j += Bc) {
-        std::vector<float> l =
-            formatTensor(LTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        for (int i = 0; i < N; i++)
-          l[i] = 0.0f;
-        // parallelize Kj, Vj (row access)
-        std::vector<float> Kj =
-            formatTensor(KjTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Vj =
-            formatTensor(VjTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Oi =
-            formatTensor(OiTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Qi =
-            formatTensor(QiTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Sij =
-            formatTensor(SijTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Pij =
-            formatTensor(PijTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> PV =
-            formatTensor(PVTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> li =
-            formatTensor(LiTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> lij =
-            formatTensor(LijTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> lnew =
-            formatTensor(LnewTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-
-        // load Kj, Vj (Bc x d)
-        int Bc_size = min(Bc, N - j); // avoid out of bound access
-        for (int c = 0; c < Bc_size; c++) {
-          int c_addr = c + j; // guaranteed to be within the bound
-          for (int mid = 0; mid < d; mid++) {
-            float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
-            float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
-            // sizeof 'x', not number of rows...QQ!!!
-            // after 'slice', it became 2D, so it's alright
-            // i.e., we don't need threeDimRead/threeDimWrite
-            twoDimWrite(Kj, c, mid, d, kj);
-            twoDimWrite(Vj, c, mid, d, vj);
-          }
-        }
         // i iter
-
         for (int i = 0; i < N; i += Br) {
+          // parallelize Kj, Vj (row access)
+          std::vector<float> Kj =
+              formatTensor(KjTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> Vj =
+              formatTensor(VjTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> Oi =
+              formatTensor(OiTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> Qi =
+              formatTensor(QiTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> Sij =
+              formatTensor(SijTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> Pij =
+              formatTensor(PijTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> PV =
+              formatTensor(PVTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> li =
+              formatTensor(LiTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> lij =
+              formatTensor(LijTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> lnew =
+              formatTensor(LnewTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+          std::vector<float> l =
+              formatTensor(LTensor.index({torch::indexing::Slice(
+                  at::get_thread_num(), torch::indexing::None)}));
+
           // load Qi, Oi, li (Br x d)
           int Br_size = min(Br, N - i);
           for (int r = 0; r < Br_size; r++) {
@@ -680,64 +662,82 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
               twoDimWrite(Oi, r, mid, d, oi);
             }
           } // end of load Qi Oi li
-          // compute Sij = Qi dot Kj_t (Br x Bc) & Pij
-          for (int r = 0; r < Br_size; r++) {
-            int r_addr = r + i; // to write back to O & l
-            float rowsum = 0.0f;
-            for (int c = 0; c < Bc_size; c++) {
-              float sij = 0.0f;
-              for (int mid = 0; mid < d; mid++) {
-                float qi = twoDimRead(Qi, r, mid, d);
-                float kj_t = twoDimRead(Kj, c, mid, d);
-                sij += qi * kj_t;
-              }
-              // write to Sij
-              twoDimWrite(Sij, r, c, Bc, sij);
-              float pij = exp(sij);
-              // write to Pij
-              twoDimWrite(Pij, r, c, Bc, pij);
-              // accumulate rowsum
-              rowsum += pij;
-            }
-            lij[r] = rowsum;
-            lnew[r] = li[r] + lij[r];
-            // write back lnew to l
-            l[r_addr] = lnew[r];
-            //} // end of r
+            // for (int i = 0; i < N; i++)
+          l[i] = 0.0f;
+          for (j = 0; j < N; j += Bc) {
 
-            // above are correct
-            // compute Oi, PV
-            // for (int r = 0; r < Br_size; r++) {
-            // compute rth row of PV: pij dot vj
-            // mid: row direction of Vj (Bc x d)
-            for (int mid = 0; mid < d; mid++) {
-              float pv = 0.0f;
-              for (int c = 0; c < Bc_size; c++) {
-                float vj = twoDimRead(Vj, c, mid, d);
-                // Pij: (Br x Bc)
-                float pij = twoDimRead(Pij, r, c, Bc);
-                pv += pij * vj;
+            // load Kj, Vj (Bc x d)
+            int Bc_size = min(Bc, N - j); // avoid out of bound access
+            for (int c = 0; c < Bc_size; c++) {
+              int c_addr = c + j; // guaranteed to be within the bound
+              for (int mid = 0; mid < d; mid++) {
+                float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
+                float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
+                // sizeof 'x', not number of rows...QQ!!!
+                // after 'slice', it became 2D, so it's alright
+                // i.e., we don't need threeDimRead/threeDimWrite
+                twoDimWrite(Kj, c, mid, d, kj);
+                twoDimWrite(Vj, c, mid, d, vj);
               }
-              // store pv, PV: Br x d
-              twoDimWrite(PV, r, mid, d, pv);
-              //}
-              //} // end of r
-              // update Oi
-              // for (int r = 0; r < Br_size; r++) {
-              // int r_addr = r + i; // to write back to O & l (defined above)
-              // for (int mid = 0; mid < d; mid++) {
-              /*float*/ pv = twoDimRead(PV, r, mid, d);
-              float oi = twoDimRead(Oi, r, mid, d);
-              oi *= li[r];
-              oi += pv;
-              oi /= lnew[r];
-              // write updated oi back
-              twoDimWrite(Oi, r, mid, d, oi);
-              // write to global O
-              fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
             }
-          }
-        } // end of i
+            // compute Sij = Qi dot Kj_t (Br x Bc) & Pij
+            for (int r = 0; r < Br_size; r++) {
+              int r_addr = r + i; // to write back to O & l
+              float rowsum = 0.0f;
+              for (int c = 0; c < Bc_size; c++) {
+                float sij = 0.0f;
+                for (int mid = 0; mid < d; mid++) {
+                  float qi = twoDimRead(Qi, r, mid, d);
+                  float kj_t = twoDimRead(Kj, c, mid, d);
+                  sij += qi * kj_t;
+                }
+                // write to Sij
+                twoDimWrite(Sij, r, c, Bc, sij);
+                float pij = exp(sij);
+                // write to Pij
+                twoDimWrite(Pij, r, c, Bc, pij);
+                // accumulate rowsum
+                rowsum += pij;
+              }
+              lij[r] = rowsum;
+              lnew[r] = li[r] + lij[r];
+              // write back lnew to l
+              l[r_addr] = lnew[r];
+              //} // end of r
+
+              // above are correct
+              // compute Oi, PV
+              // for (int r = 0; r < Br_size; r++) {
+              // compute rth row of PV: pij dot vj
+              // mid: row direction of Vj (Bc x d)
+              for (int mid = 0; mid < d; mid++) {
+                float pv = 0.0f;
+                for (int c = 0; c < Bc_size; c++) {
+                  float vj = twoDimRead(Vj, c, mid, d);
+                  // Pij: (Br x Bc)
+                  float pij = twoDimRead(Pij, r, c, Bc);
+                  pv += pij * vj;
+                }
+                // store pv, PV: Br x d
+                twoDimWrite(PV, r, mid, d, pv);
+                //}
+                //} // end of r
+                // update Oi
+                // for (int r = 0; r < Br_size; r++) {
+                // int r_addr = r + i; // to write back to O & l (defined above)
+                // for (int mid = 0; mid < d; mid++) {
+                /*float*/ pv = twoDimRead(PV, r, mid, d);
+                float oi = twoDimRead(Oi, r, mid, d);
+                oi *= li[r];
+                oi += pv;
+                oi /= lnew[r];
+                // write updated oi back
+                twoDimWrite(Oi, r, mid, d, oi);
+                // write to global O
+                fourDimWrite(O, b, h, r_addr, mid, H, N, d, oi);
+              }
+            }
+          } // end of i
       }   // end of j
     }
   }
