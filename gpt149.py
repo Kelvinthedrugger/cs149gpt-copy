@@ -113,7 +113,7 @@ class CustomAttention(nn.Module):
         Lij = torch.zeros((NUM_THREADS, self.br))
         Li = torch.zeros((NUM_THREADS, self.br))
         if self.isRef:
-            with record_function("STUDENT - FLASH ATTENTION"):
+            with record_function("STUDENT - OpenMPFlash"):
                 out = mr.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
             return out
         return

@@ -607,39 +607,50 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
   std::vector<float> K = formatTensor(KTensor);
   std::vector<float> V = formatTensor(VTensor);
 
-  // below are replicated to run in openmp fast
-  std::vector<float> Sij = formatTensor(SijTensor);
-  std::vector<float> Pij = formatTensor(PijTensor);
-  // std::vector<float> Kj = formatTensor(KjTensor);
-  // std::vector<float> Vj = formatTensor(VjTensor);
-  std::vector<float> Qi = formatTensor(QiTensor);
-  std::vector<float> Oi = formatTensor(OiTensor);
-  // std::vector<float> l = formatTensor(LTensor);
-  std::vector<float> PV = formatTensor(PVTensor);
-  std::vector<float> li = formatTensor(LiTensor);
-  std::vector<float> lij = formatTensor(LijTensor);
-  std::vector<float> lnew = formatTensor(LnewTensor);
-
   // -------- YOUR CODE HERE  -------- //
   int b = 0, h = 0, j = 0;
   // TODO make it work for 3 loops
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for collapse(3)
   for (b = 0; b < B; b++) {
     for (h = 0; h < H; h++) {
-      // TODO set l to 0 for each head (parallel)
-      std::vector<float> l = formatTensor(LTensor.index({torch::indexing::Slice(
-          at::get_thread_num(), torch::indexing::None)}));
-      for (int i = 0; i < N; i++)
-        l[i] = 0.0f;
-        // parallelize Kj, Vj (row access)
-      std::vector<float> Kj =
-          formatTensor(KjTensor.index({torch::indexing::Slice(
-              at::get_thread_num(), torch::indexing::None)}));
-      std::vector<float> Vj =
-          formatTensor(VjTensor.index({torch::indexing::Slice(
-              at::get_thread_num(), torch::indexing::None)}));
-#pragma omp parallel for collapse(1)
       for (j = 0; j < N; j += Bc) {
+        std::vector<float> l =
+            formatTensor(LTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        for (int i = 0; i < N; i++)
+          l[i] = 0.0f;
+        // parallelize Kj, Vj (row access)
+        std::vector<float> Kj =
+            formatTensor(KjTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Vj =
+            formatTensor(VjTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Oi =
+            formatTensor(OiTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Qi =
+            formatTensor(QiTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Sij =
+            formatTensor(SijTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> Pij =
+            formatTensor(PijTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> PV =
+            formatTensor(PVTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> li =
+            formatTensor(LiTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> lij =
+            formatTensor(LijTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+        std::vector<float> lnew =
+            formatTensor(LnewTensor.index({torch::indexing::Slice(
+                at::get_thread_num(), torch::indexing::None)}));
+
         // load Kj, Vj (Bc x d)
         int Bc_size = min(Bc, N - j); // avoid out of bound access
         for (int c = 0; c < Bc_size; c++) {
@@ -648,20 +659,14 @@ torch::Tensor OpenMPFlash(torch::Tensor QTensor, torch::Tensor KTensor,
             float kj = fourDimRead(K, b, h, c_addr, mid, H, N, d);
             float vj = fourDimRead(V, b, h, c_addr, mid, H, N, d);
             // sizeof 'x', not number of rows...QQ!!!
-            // after 'slice', it became 2D, so it's alright?
-            // i.e., we don't need threeDimRead/threeDimWrite?
+            // after 'slice', it became 2D, so it's alright
+            // i.e., we don't need threeDimRead/threeDimWrite
             twoDimWrite(Kj, c, mid, d, kj);
             twoDimWrite(Vj, c, mid, d, vj);
           }
         }
         // i iter
-        std::vector<float> Oi =
-            formatTensor(OiTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-        std::vector<float> Qi =
-            formatTensor(QiTensor.index({torch::indexing::Slice(
-                at::get_thread_num(), torch::indexing::None)}));
-#pragma omp parallel for collapse(1)
+
         for (int i = 0; i < N; i += Br) {
           // load Qi, Oi, li (Br x d)
           int Br_size = min(Br, N - i);
