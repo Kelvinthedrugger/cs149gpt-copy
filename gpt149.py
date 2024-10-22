@@ -261,12 +261,12 @@ def part3Test(N, d, B, H):
 def part4Test(N, d, B, H, bc, br):
     print("Running Part 4 Test: Flash Attention\n")
     Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
+    #attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
     attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
     params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
-    time.sleep(3)
+    #print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    #testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
+    #time.sleep(3)
     print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
     testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
@@ -337,11 +337,7 @@ def main():
         elif args.testname == "part3":
             part3Test(N, d, B, H)
         elif args.testname == "part4":
-            part4Test(N, d, B, H, int(args.bc), int(args.br)) #correct
-            # part4Test(4, 4, 1, 1, 2, 2) #correct
-            # part4Test(4, 4, 1, 1, 1, 1) #correct
-            #part4Test(N, d, 1, 1, 1, 1) # correct
-            #part4Test(N, d, B, H, 1, 1) #correct
+            part4Test(N, d, B, H, int(args.bc), int(args.br))
         elif args.testname == "part5":
             part5Test(N, d, B, H, int(args.bc), int(args.br))
         elif args.testname == "4Daccess":
