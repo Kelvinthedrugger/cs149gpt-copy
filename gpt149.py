@@ -307,8 +307,15 @@ def main():
     parser.add_argument("-bc",  default="256", help="Flash Attention Bc Size")
     parser.add_argument("-br", default="256", help="Flash Attention Br Size")
     parser.add_argument("-N", default="1024", help="Flash Attention Br Size")
+    parser.add_argument("-p","--measure", default=False, help="cache/branch misses")
 
     args = parser.parse_args()
+
+    if args.measure:
+        import os
+        print("current process id: %d" % os.getpid())
+        print("sleep while setting up benchmark program (3 sec) ...")
+        time.sleep(3)
 
     if args.model == "shakes128":
         N = 128
