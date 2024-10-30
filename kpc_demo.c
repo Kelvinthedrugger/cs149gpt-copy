@@ -946,11 +946,16 @@ static kpep_event *get_event(kpep_db *db, const event_alias *alias) {
 // -----------------------------------------------------------------------------
 
 static void profile_func(void) {
-    for (u32 i = 0; i < 100000; i++) {
-        u32 r = arc4random();
-        if (r % 2) arc4random();
-    }
+  for (u32 i = 0; i < 100000; i++) {
+      u32 r = arc4random();
+      if (r % 2) arc4random();
+  }
 }
+/*char cmd[500] =
+    "export CXX=/opt/homebrew/opt/llvm/bin/clang++ && python3 gpt149.py part";*/
+/*static void profile_func(void) {
+  system(cmd);
+}*/
 
 int main1(int argc, const char *argv[]) {
   int ret = 0;
@@ -1495,7 +1500,16 @@ int main(int argc, char *argv[]) {
     printf("Enter the pid: ");
     scanf("%d", &target_pid);
     main2(argc, argv);
-  } else
+  } else {
+    // concat prompt to cmd
+    // Warning: this is profiling the system call (system())
+    // , instead of the test that we want
+    /*char prompt[200];
+    printf("enter the test to profile (part0/1/2/3/4 & args): ");
+    scanf("%500[^\n]", prompt);
+    strcat(cmd, prompt);
+    printf("The command you entered: %s\n", cmd);*/
     main1(argc, argv);
+  }
   return 0;
 }
