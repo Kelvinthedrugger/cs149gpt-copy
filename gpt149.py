@@ -23,81 +23,7 @@ print("\nCompiling code into a PyTorch module...\n\n")
 mr = load(name="custom_module", sources=["module.cpp"],  extra_cflags=["-mavx", "-O3", "-fopenmp"], extra_ldflags=[ispc_path])
 correctness_error_message = "\n-------------------------------------------\n YOUR ATTENTION PRODUCED INCORRECT RESULTS"
 
-class CustomAttention(nn.Module):
-    def __init__(self, Q,K,V, B, H, N, d, isRef=False, bc=256, br=256):
-        super(nn.Module, self).__init__()
-        self.Q=Q
-        self.K=K
-        self.V=V
-        self.bc=bc
-        self.br=br
-        self.B=B
-        self.H=H
-        self.N=N
-        self.d=d
-        self.isRef=isRef
-
-    #part 1
-    def myUnfusedAttention(self):
-        if self.isRef:
-            with record_function("STUDENT - NAIVE ATTENTION"):
-                temp = torch.zeros((self.N, self.N))
-                out = mr.myNaiveAttention(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-            return out
-        with record_function("REFERENCE - NAIVE ATTENTION"):
-            temp = torch.zeros((self.N, self.N))
-            out = ms.myNaiveAttention(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-        return out
-
-    #part 2
-    def myUnfusedAttentionBlocked(self):
-        if self.isRef:
-            with record_function("STUDENT - BLOCKED MATMUL + UNFUSED SOFTMAX"):
-                temp = torch.zeros((self.N, self.N))
-                out = mr.myUnfusedAttentionBlocked(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-            return out 
-        with record_function("REFERENCE - BLOCKED MATMUL + UNFUSED SOFTMAX"):
-            temp = torch.zeros((self.N, self.N))
-            out = ms.myUnfusedAttentionBlocked(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-        return out
-
-    #part 3
-    def myFusedAttention(self):
-        if self.isRef:
-            with record_function("STUDENT - FUSED ATTENTION"):
-                temp = torch.zeros((NUM_THREADS, self.N))
-                out = mr.myFusedAttention(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-            return out
-        with record_function("REFERENCE - FUSED ATTENTION"):
-            temp = torch.zeros((NUM_THREADS, self.N))
-            out = ms.myFusedAttention(self.Q, self.K, self.V, temp, self.B, self.H, self.N, self.d)
-        return out
-
-    #part 4
-    def myFlashAttention(self):
-        d = self.d
-        Qi = torch.zeros((self.br, self.d))
-        Kj = torch.zeros((self.bc, self.d))
-        Vj = torch.zeros((self.bc, self.d))
-        Sij = torch.zeros((self.br, self.bc))
-        Pij = torch.zeros((self.br, self.bc))
-        PV = torch.zeros((self.br, d))
-        Oi = torch.zeros((self.br, d))
-        L = torch.zeros((self.N))
-        Lnew = torch.zeros((self.br))
-        Lij = torch.zeros((self.br))
-        Li = torch.zeros((self.br))
-
-        if self.isRef:
-            with record_function("STUDENT - FLASH ATTENTION"):
-                out = mr.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
-            return out
-        with record_function("REFERENCE - FLASH ATTENTION"):
-            #out = ms.myFlashAttention(self.Q, self.K, self.V, self.B, self.H, self.N, self.d, self.blockSize)
-            out = ms.myFlashAttention(self.Q, self.K, self.V, Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Li, Lij, Lnew, self.bc, self.br, self.B, self.H, self.N, self.d)
-        return out
-
-# generates dummy matrices for use in part0 
+# generates dummy matrices for use in part0
 def createQKVSimple(N,d,B,H):
     Q = torch.empty(B,H,N,d)
     K = torch.empty(B,H,d,N)
@@ -146,103 +72,8 @@ def badSoftmax(Q, K, V):
     QK = Q @ K.transpose(-2,-1)
     #compute softmax of QK^T
     QKSoftmax = F.softmax(QK, dim=3)
-    QKV = QKSoftmax @ V   
+    QKV = QKSoftmax @ V
     return QKV
-
-def testTemplate(customFunc, params, test_key):
-    start = time.time()
-    N, d, B, H = params
-    #compute pytorch unfused softmax
-    Q, K, V = createQKVSimple(N,d,B,H)
-    QKV = badSoftmax(Q,K,V)
-    end = time.time()
-    pytorch_time = end - start
-
-    with profile(activities=[ProfilerActivity.CPU],
-            profile_memory=True, record_shapes=True) as prof:
-        with record_function("model_inference"):
-            #compute with Naive Unfused 
-            start = time.time()
-            QKS1 = customFunc()
-            end = time.time()
-            manual_time = end - start
-    
-    assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
-    print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4)) 
-    #print("Pytorch Execution Time:", pytorch_time, "\n")
-    print("Manual Execution Time: ", manual_time, "\n")
-    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))    
-    r = prof.key_averages()
-    for rr in r:
-        if rr.key == test_key:
-            key, cpu_time, mem_usage = rr.key, rr.cpu_time, rr.cpu_memory_usage
-            print (test_key+ " statistics")
-            print("cpu time: ", str(cpu_time / 1000.0) + "ms")
-            print("mem usage: ", mem_usage, "bytes")
-
-def part0Test(N, d, B, H):
-    print("Running part 0 test: Pytorch Matmul + Softmax")
-    Q,K,V = createQKVSimple(N,d,B,H)
-    with profile(activities=[ProfilerActivity.CPU],
-            profile_memory=True, record_shapes=True) as prof:
-
-        start = time.time()
-        #compute pytorch unfused softmax
-        QKV = badSoftmax(Q,K,V)
-        end = time.time()
-        pytorch_time = end - start
-
-    print("Pytorch Execution Time:", pytorch_time, "\n")
-    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
-
-
-def part1Test(N, d, B, H):
-    print("Running Part 1 Test: Naive Unfused Attention\n")
-    Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
-    attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
-    params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myUnfusedAttention, params, "REFERENCE - NAIVE ATTENTION")
-    time.sleep(3)
-    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleReference.myUnfusedAttention, params, "STUDENT - NAIVE ATTENTION")
-
-def part2Test(N, d, B, H):
-    print("Running Part 2 Test: Unfused Attention with Blocked Matmul\n")
-    Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
-    attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
-    params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myUnfusedAttentionBlocked, params, "REFERENCE - BLOCKED MATMUL + UNFUSED SOFTMAX")
-    time.sleep(3)
-    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleReference.myUnfusedAttentionBlocked, params, "STUDENT - BLOCKED MATMUL + UNFUSED SOFTMAX")
-
-def part3Test(N, d, B, H):
-    print("Running Part 3 Test: Fused Attention\n")
-    Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d)
-    attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True)
-    params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFusedAttention, params, "REFERENCE - FUSED ATTENTION")
-    time.sleep(3)
-    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleReference.myFusedAttention, params, "STUDENT - FUSED ATTENTION")
-
-def part4Test(N, d, B, H, bc, br):
-    print("Running Part 4 Test: Flash Attention\n")
-    Q,K,V = createQKVSimple(N,d,B,H)
-    attentionModuleStudent = CustomAttention(Q,K,V, B, H, N, d, False, bc, br)
-    attentionModuleReference = CustomAttention(Q,K,V, B, H, N, d, True, bc, br)
-    params = (N, d, B, H)
-    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleStudent.myFlashAttention, params, "REFERENCE - FLASH ATTENTION")
-    time.sleep(3)
-    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
-    testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
 def accessTest(B, H, N, d):
     Q,_ ,_ = createQKVSimple(N,d,B,H)
@@ -258,13 +89,111 @@ def accessTest(B, H, N, d):
     print("Expected:", expected)
     print("Result:", result)
     assert abs(expected - result) < 1e-5
-    
+
+
+# rewrite the whole thing so that it's concise
+# design: use 'testcase' (str) to refer:
+#  which module to test
+#  whether there are additional intermediate tensors to be allocated upfront
+# 1. testtemplate: don't have to create QKV over & over again
+# @loops: (not designed yet) run the module 'loops' times to mitigate overhead of kickstarting the whole thing
+# 2. get rid of the class of different attn modules: just use functions
+# @func_name: use this to refer which function to get,
+#   (use similar approach on str passed into 'record_function')
+def get_intermediates(N, d, bc, br):
+    # return list/tuple of tensors
+    Qi = torch.zeros((br, d))
+    Kj = torch.zeros((bc, d))
+    Vj = torch.zeros((bc, d))
+    Sij = torch.zeros((br, bc))
+    Pij = torch.zeros((br, bc))
+    PV = torch.zeros((br, d))
+    Oi = torch.zeros((br, d))
+    L = torch.zeros((N))
+    Lnew = torch.zeros((br))
+    Lij = torch.zeros((br))
+    Li = torch.zeros((br))
+    temp = [Qi, Kj, Vj, Sij, Pij, PV, Oi, L, Lnew, Lij, Li, bc, br]
+    return temp
+
+func_name =  {"part1": ["myNaiveAttention", "Naive Attention"],
+  "part2": ["myUnfusedAttentionBlocked", "Blocked Unfused Attention"],
+  "part3": ["myFusedAttention", "Fused Attention"],
+  "part4": ["myFlashAttention", "Flash Attention"],
+  }
+# @dims: (N,d,B,H)
+# testit() handles part 1 to 4
+def testit(testcase, dims, is_ref=False, bc=0, br=0):
+    N = dims[0]; d = dims[1]
+    # qkv: tuple of (Q,K,V)
+    qkv = createQKVSimple(*dims)
+    start = time.time()
+    QKV = badSoftmax(*qkv)
+    end = time.time()
+    pytorch_time = end - start
+    # @temp: list of tensors to be passed into the attention module
+    temp = None
+    # @tsidx: int, extracted test number
+    tsidx = int(testcase[4:])
+    if tsidx == 0:
+        pass
+    elif tsidx < 3:
+        temp = [torch.zeros((N, N))]
+    elif tsidx == 3:
+        temp = [torch.zeros((NUM_THREADS, N))]
+    else: #part 4
+        # list of intermediates
+        temp = get_intermediates(N,d,bc,br)
+    # if is_ref: is reference solution (.so file)
+    #  -> test it as well
+    func = None
+    test_key = ""
+    if is_ref:
+        func = getattr(ms,func_name[testcase][0])
+        test_key = "REFERENCE - "
+    else:
+        func = getattr(mr,func_name[testcase][0])
+        test_key = "STUDENT - "
+    test_key += func_name[testcase][1]
+    with profile(activities=[ProfilerActivity.CPU],
+            profile_memory=True, record_shapes=True) as prof:
+        with record_function("model_inference"):
+            start = time.time()
+            with record_function(test_key):
+                # @dims: (N,d,B,H); but we need B,H,N,d here
+                QKS1 = func(*qkv, *temp, *(dims[2:]+dims[:2]) )
+            end = time.time()
+            manual_time = end - start
+    assert torch.allclose(QKV,QKS1, atol=1e-4), correctness_error_message
+    print("manual attention == pytorch attention",torch.allclose(QKV,QKS1, atol=1e-4))
+    print("Pytorch Execution Time:", pytorch_time, "\n")
+    print("Manual Execution Time: ", manual_time, "\n")
+    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
+    r = prof.key_averages()
+    for rr in r:
+        if rr.key == test_key:
+            key, cpu_time, mem_usage = rr.key, rr.cpu_time, rr.cpu_memory_usage
+            print (test_key+ " statistics")
+            print("cpu time: ", str(cpu_time / 1000.0) + "ms")
+            print("mem usage: ", mem_usage, "bytes")
+    return
+
+def partNTest(testname, dims, bc, br):
+    # REFERENCE solution
+    print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
+    testit(testname, dims, True, bc, br)
+    time.sleep(3)
+    # STUDENT's implementation
+    print("-----RUNNING STUDENT IMPLEMENTATION-----\n")
+    testit(testname, dims, False, bc, br)
+    return
+
 def main():
 
     d=32
     B=1
     H=4
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("testname", default="part0", help="name of test to run: part0, part1, part2, part3, part4, 4Daccess")
     parser.add_argument("-m", "--model", default="shakes128", help="name of model to use: shakes128, shakes1024, shakes2048, kayvon")
@@ -290,19 +219,13 @@ def main():
     else:
         print("Unknown model name: %s" % args.model)
         return
-    
+
     if args.inference == False:
         N = int(args.N)
         if args.testname == "part0":
             part0Test(N, d, B, H)
-        elif args.testname == "part1":
-            part1Test(N, d, B, H)
-        elif args.testname == "part2":
-            part2Test(N, d, B, H)
-        elif args.testname == "part3":
-            part3Test(N, d, B, H)
-        elif args.testname == "part4":
-            part4Test(N, d, B, H, int(args.bc), int(args.br))
+        elif args.testname in {"part1", "part2", "part3", "part4",}:
+            partNTest(args.testname, (N, d, B, H), int(args.bc), int(args.br))
         elif args.testname == "4Daccess":
             accessTest(1, 2, 4, 4)
         else:
@@ -312,6 +235,6 @@ def main():
         from sample import run_sample
         run_sample(N, model_filename, args.testname)
 
-        
+
 if __name__ == "__main__":
     main()
