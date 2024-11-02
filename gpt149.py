@@ -178,6 +178,19 @@ def testit(testcase, dims, is_ref=False, bc=0, br=0):
             print("mem usage: ", mem_usage, "bytes")
     return
 
+def part0Test(N, d, B, H):
+    print("Running part 0 test: Pytorch Matmul + Softmax")
+    Q,K,V = createQKVSimple(N,d,B,H)
+    with profile(activities=[ProfilerActivity.CPU],
+            profile_memory=True, record_shapes=True) as prof:
+        start = time.time()
+        #compute pytorch unfused softmax
+        QKV = badSoftmax(Q,K,V)
+        end = time.time()
+        pytorch_time = end - start
+    print("Pytorch Execution Time:", pytorch_time, "\n")
+    print(prof.key_averages().table(sort_by="cpu_memory_usage", row_limit=10))
+
 def partNTest(testname, dims, bc, br):
     # REFERENCE solution
     print("-----RUNNING REFERENCE IMPLEMENTATION-----\n")
